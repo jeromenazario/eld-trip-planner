@@ -67,6 +67,7 @@ function gmRouteToData(gmRoute, meta) {
   return {
     ...meta,
     path,
+    miles: distMi,                       // numeric distance — used to re-plan the HOS schedule
     dist:  `${distMi.toLocaleString()} mi`,
     drive: fmtDur(totalSecs),
     days:  `${Math.ceil(totalSecs / (11 * 3600))} days`,
@@ -346,7 +347,10 @@ function RouteSelectInner({ trip, onConfirm }) {
 
   const handleGenerate = () => {
     if (!selected) return;
-    onConfirm(selected);
+    // Hand the FULL chosen route up (geometry + distance), not just its id,
+    // so the generated plan reflects the route the driver actually picked.
+    const route = routes?.find(r => r.id === selected);
+    if (route) onConfirm(route);
   };
 
   return (

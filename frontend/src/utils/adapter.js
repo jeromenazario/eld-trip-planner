@@ -177,7 +177,30 @@ export function adaptBackendResponse(data, formInput) {
   const [depH, depM] = (formInput.departure_time || '00:00').split(':').map(Number);
   const departureMinutes = (depH || 0) * 60 + (depM || 0);
   const days = logs.map((log, i) => toDesignDay(log, totalDays, i === 0 ? departureMinutes : 0));
+
+  // When geocoding wasn't available (no API key), stops have no name.
+  // Inject the user-entered strings so enrichRemarks has something meaningful to show.
+  const FORM_NAMES = {
+    start:   formInput.current_location  || '',
+    pickup:  formInput.pickup_location   || '',
+    dropoff: formInput.dropoff_location  || '',
+  };
+  for (const s of stops) {
+    if (!s.name && FORM_NAMES[s.type]) s.name = FORM_NAMES[s.type];
+  }
+
   enrichRemarks(days, stops);
+
+  // Pass the last known place across day boundaries so Day 2 transitions that
+  // happen before the first named stop don't silently show "En route".
+  for (let i = 1; i < days.length; i++) {
+    const prev = days[i - 1].remarks;
+    if (prev.length > 0) {
+      const last = prev[prev.length - 1];
+      days[i].carryPlace = last.place || last.text || null;
+    }
+  }
+
   return {
     days,
     route: toDesignRoute(route, stops),

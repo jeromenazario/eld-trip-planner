@@ -32,27 +32,47 @@ function yOf(status) { return G.yTop + (ROW_IDX[status] ?? 0) * G.rowH + G.rowH 
 
 // Compute transition annotations once; shared between SVG and HTML sections.
 function buildTransitions(day) {
-  // Assign alternating tiers and suppress time labels that would overlap.
-  const MIN_X_GAP = 44; // SVG px — below this, hide the time label to prevent collision
+  const MIN_X_GAP = 44;
   let lastLabelX = G.x0 - MIN_X_GAP - 1;
+
+  const sorted = [...day.remarks].sort((a, b) => a.time - b.time);
 
   return day.changes.slice(1).map((c, i) => {
     const prev = day.changes[i];
     const x = xAt(c.start);
-    const tier = i % 2; // alternates 0 / 1 for staggered tick heights and time y
+    const tier = i % 2;
     const showTime = (x - lastLabelX) >= MIN_X_GAP;
     if (showTime) lastLabelX = x;
-    const match = day.remarks.find(r => Math.abs(r.time - c.start) < 2);
+
+    const direct = sorted.find(r => Math.abs(r.time - c.start) <= 15);
+
+    if (direct) {
+      return {
+        time: c.start, from: prev.status, to: c.status,
+        location: direct.place || direct.text,
+        action: direct.text,
+        estimated: false,
+        x, tier, showTime,
+      };
+    }
+
+    let prior = null;
+    for (let k = sorted.length - 1; k >= 0; k--) {
+      if (sorted[k].time < c.start) { prior = sorted[k]; break; }
+    }
+
+    // If no remark exists yet in this day, fall back to the last known place
+    // from the previous day (e.g. driver is still near the overnight rest stop).
+    const fallbackPlace = prior
+      ? (prior.place || prior.text)
+      : (day.carryPlace || null);
+
     return {
-      time: c.start,
-      from: prev.status,
-      to: c.status,
-      // Prefer the resolved geographic place; fall back to the remark label
-      location: match ? (match.place || match.text) : null,
-      action: match?.text ?? null,
-      x,
-      tier,
-      showTime,
+      time: c.start, from: prev.status, to: c.status,
+      location: fallbackPlace,
+      action: null,
+      estimated: true,
+      x, tier, showTime,
     };
   });
 }
@@ -145,8 +165,6 @@ function LogGrid({ day, transitions }) {
       <line x1={G.x0} x2={G.x1} y1={G.remarksY} y2={G.remarksY} stroke="#374151" strokeWidth={1.2} />
 
       {transitions.map((t) => {
-        // Tier 0: short tick + time just above; Tier 1: longer tick + time further above
-        // → adjacent transitions are always in different tiers, so times never sit at the same y
         const tickLen  = t.tier === 0 ? 14 : 26;
         const timeY    = G.remarksY - (t.tier === 0 ? 9 : 21);
 
@@ -211,14 +229,14 @@ function RemarksList({ transitions }) {
               </span>
             )}
 
-            {/* Estimated location */}
+            {/* Location (exact when at a stop, otherwise estimated) */}
             {t.location ? (
               <span style={{
                 display: 'flex', alignItems: 'center', gap: 5,
-                fontSize: 12, color: 'var(--muted)', marginTop: 1,
+                fontSize: 12, color: t.estimated ? 'var(--label)' : 'var(--muted)', marginTop: 1,
               }}>
-                <MapPin size={11} strokeWidth={2} color="var(--accent)" />
-                {t.location}
+                <MapPin size={11} strokeWidth={2} color={t.estimated ? 'var(--label)' : 'var(--accent)'} />
+                {t.estimated ? `~ ${t.location}` : t.location}
               </span>
             ) : (
               <span style={{
@@ -240,10 +258,10 @@ function LogCard({ day }) {
   const transitions = buildTransitions(day);
 
   const head = [
-    ['Driver', day.driver || '—'],
+    ['Driver',    day.driver || '—'],
     ['Co-driver', day.co_driver || 'None'],
-    ['Carrier', day.carrier || '—'],
-    ['Truck #', day.truck_number || '—'],
+    ['Carrier',   day.carrier || '—'],
+    ['Truck #',   day.truck_number || '—'],
   ];
 
   return (

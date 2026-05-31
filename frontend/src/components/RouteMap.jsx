@@ -55,35 +55,104 @@ function Mini({ label, val, dot }) {
   );
 }
 
+function RemarksStrip({ schedule }) {
+  if (!schedule?.length) return null;
+
+  // Flatten every day's items into one inline flow.
+  const items = schedule.flatMap(d => d.items || []);
+  if (!items.length) return null;
+
+  return (
+    <div style={{ padding: '6px 22px 4px', borderTop: '1px solid var(--border)' }}>
+      <div style={{
+        fontSize: 10.5, fontWeight: 700, color: '#374151',
+        letterSpacing: '.06em', textTransform: 'uppercase', margin: '14px 0 11px',
+      }}>
+        Remarks
+      </div>
+
+      <div style={{
+        display: 'flex', flexWrap: 'wrap', alignItems: 'baseline',
+        columnGap: 28, rowGap: 10,
+      }}>
+        {items.map((it, i) => (
+          <span key={i} style={{ display: 'inline-flex', alignItems: 'baseline', gap: 8 }}>
+            <span style={{
+              fontFamily: 'var(--mono)', fontSize: 12.5, fontWeight: 600,
+              color: 'var(--accent)', whiteSpace: 'nowrap',
+            }}>
+              {it.time}
+            </span>
+            <span style={{ fontSize: 13.5, fontWeight: 500, color: 'var(--text)' }}>
+              {it.text}
+              {it.loc && <span style={{ color: 'var(--muted)', fontWeight: 400 }}> · {it.loc}</span>}
+            </span>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function StopSchedule({ schedule }) {
   if (!schedule?.length) return null;
   return (
-    <div style={{ display: 'flex', flexDirection: 'column' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
       {schedule.map((d, i) => (
-        <div key={i} style={{ display: 'grid', gridTemplateColumns: '130px 1fr', gap: 20, padding: '18px 4px', borderTop: i ? '1px solid var(--border)' : 'none' }}>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 600 }}>Day {d.day}</div>
-            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
-              {d.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+        <div key={i} style={{ borderTop: i ? '1px solid var(--border)' : 'none', padding: '18px 0 18px' }}>
+          {/* Day header */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+            <div style={{
+              width: 40, height: 40, borderRadius: 10, flexShrink: 0,
+              background: 'var(--accent-soft)', color: 'var(--accent)',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <div style={{ fontSize: 7.5, fontWeight: 700, letterSpacing: '.04em', lineHeight: 1, opacity: .7 }}>DAY</div>
+              <div style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.1 }}>{d.day}</div>
             </div>
-            <div style={{ display: 'flex', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
-              <Mini label="Drive"   val={hrsMin(d.drive)}  dot="#2563eb" />
-              <Mini label="On duty" val={hrsMin(d.onduty)} dot="#d97706" />
-              <Mini label="Rest"    val={hrsMin(d.rest)}   dot="#7c3aed" />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>
+                {d.date.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+              </div>
+              <div style={{ display: 'flex', gap: 12, marginTop: 5, flexWrap: 'wrap' }}>
+                <Mini label="Drive"   val={hrsMin(d.drive)}  dot="#2563eb" />
+                <Mini label="On duty" val={hrsMin(d.onduty)} dot="#d97706" />
+                <Mini label="Rest"    val={hrsMin(d.rest)}   dot="#7c3aed" />
+              </div>
             </div>
           </div>
-          <ol style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column' }}>
+
+          {/* Items */}
+          <div style={{ paddingLeft: 52 }}>
             {d.items.map((it, j) => (
-              <li key={j} style={{ display: 'grid', gridTemplateColumns: '74px 1fr', gap: 14, position: 'relative', padding: '7px 0' }}>
-                <div style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--muted)', textAlign: 'right', paddingTop: 1 }}>{it.time}</div>
-                <div style={{ position: 'relative', paddingLeft: 18 }}>
-                  <span style={{ position: 'absolute', left: 0, top: 6, width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)', boxShadow: '0 0 0 3px var(--accent-tint)' }} />
-                  {j < d.items.length - 1 && <span style={{ position: 'absolute', left: 3.5, top: 13, bottom: -9, width: 1, background: 'var(--border)' }} />}
-                  <div style={{ fontSize: 13, fontWeight: 500 }}>{it.text}</div>
+              <div key={j} style={{ display: 'grid', gridTemplateColumns: '16px 1fr', gap: '0 10px', paddingBottom: j < d.items.length - 1 ? 10 : 0 }}>
+                {/* Dot + connector */}
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)', boxShadow: '0 0 0 3px var(--accent-tint)', marginTop: 4, flexShrink: 0 }} />
+                  {j < d.items.length - 1 && <div style={{ width: 1, flex: 1, minHeight: 10, background: 'var(--border)', marginTop: 3 }} />}
                 </div>
-              </li>
+                {/* Text */}
+                <div style={{ paddingBottom: 2 }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                    <span style={{ fontFamily: 'var(--mono)', fontSize: 11.5, color: 'var(--muted)', whiteSpace: 'nowrap', fontWeight: 500 }}>
+                      {it.time}
+                    </span>
+                    <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>{it.text}</span>
+                  </div>
+                  {it.loc && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 3, fontSize: 11.5, color: 'var(--label)' }}>
+                      <span style={{ width: 10, height: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M20 10c0 6-8 13-8 13s-8-7-8-13a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>
+                        </svg>
+                      </span>
+                      {it.loc}
+                    </div>
+                  )}
+                </div>
+              </div>
             ))}
-          </ol>
+          </div>
         </div>
       ))}
     </div>
@@ -182,9 +251,13 @@ export default function RouteMap({ route, stops = [], schedule, remarkMarkers = 
         {isLoaded && <MapInner route={route} stops={stops} remarkMarkers={remarkMarkers} />}
       </div>
 
+      <RemarksStrip schedule={schedule} />
+
       {schedule?.length > 0 && (
-        <div style={{ padding: '4px 22px 8px' }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#374151', letterSpacing: '.06em', textTransform: 'uppercase', margin: '12px 0 2px' }}>Stop schedule</div>
+        <div style={{ padding: '6px 22px 16px', borderTop: '1px solid var(--border)' }}>
+          <div style={{ fontSize: 10.5, fontWeight: 700, color: '#374151', letterSpacing: '.06em', textTransform: 'uppercase', margin: '14px 0 0' }}>
+            Daily Schedule
+          </div>
           <StopSchedule schedule={schedule} />
         </div>
       )}

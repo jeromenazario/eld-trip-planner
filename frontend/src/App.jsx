@@ -110,6 +110,7 @@ export default function App() {
   const [activePage, setActivePage] = useState('newtrip'); // start on form
   const [collapsed, setCollapsed] = useState(false);
   const [trip, setTrip] = useState(null);
+  const [lastPayload, setLastPayload] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -122,7 +123,37 @@ export default function App() {
       const { data } = await planTrip(payload);
       const designData = adaptBackendResponse(data, payload);
       setTrip(designData);
+      setLastPayload(payload);     // keep it so a route choice can re-plan
       setActivePage('routeselect');
+    } catch (err) {
+      setError(
+        err?.response?.status === 429
+          ? 'Too many requests — please wait a moment and try again.'
+          : err?.response?.data
+            ? JSON.stringify(err.response.data, null, 2)
+            : err.message || 'Request failed'
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // The driver picked a specific route on the map. Re-plan the HOS schedule for
+  // that route's real distance, then overlay its exact geometry on the dashboard
+  // map so what's generated matches what was selected.
+  const handleRouteConfirm = async (selectedRoute) => {
+    setActivePage('dashboard');
+    if (!lastPayload || !selectedRoute) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const payload = { ...lastPayload, estimated_miles: selectedRoute.miles };
+      const { data } = await planTrip(payload);
+      const designData = adaptBackendResponse(data, payload);
+      // Backend always returns its own default geometry — replace it with the
+      // route the driver actually chose.
+      if (selectedRoute.path?.length) designData.route.path = selectedRoute.path;
+      setTrip(designData);
     } catch (err) {
       setError(
         err?.response?.status === 429
@@ -160,11 +191,11 @@ export default function App() {
     );
   } else if (activePage === 'routeselect') {
     body = trip
-      ? <RouteSelect trip={trip} onConfirm={() => setActivePage('dashboard')} />
+      ? <RouteSelect trip={trip} onConfirm={handleRouteConfirm} />
       : null;
   } else if (activePage === 'dashboard') {
     body = trip
-      ? <TripResult trip={trip} />
+      ? <TripResult trip={trip} loading={loading} error={error} />
       : (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 400, flexDirection: 'column', gap: 16 }}>
           <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#f0f0f0', display: 'grid', placeItems: 'center' }}>
