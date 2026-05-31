@@ -147,11 +147,18 @@ export default function App() {
     setLoading(true);
     setError(null);
     try {
-      const payload = { ...lastPayload, estimated_miles: selectedRoute.miles };
+      // Send the chosen route's exact geometry so the backend places fuel/rest
+      // stops and looks up gas stations along the SAME path that gets drawn —
+      // otherwise the markers sit on the backend's own (waypointed) route and
+      // drift off the line the driver actually selected.
+      const payload = {
+        ...lastPayload,
+        estimated_miles: selectedRoute.miles,
+        route_geometry: selectedRoute.path || [],
+      };
       const { data } = await planTrip(payload);
       const designData = adaptBackendResponse(data, payload);
-      // Backend always returns its own default geometry — replace it with the
-      // route the driver actually chose.
+      // Keep the drawn line exactly as selected (backend echoes the same path).
       if (selectedRoute.path?.length) designData.route.path = selectedRoute.path;
       setTrip(designData);
     } catch (err) {
@@ -168,8 +175,11 @@ export default function App() {
   };
 
   const meta = TITLES[activePage] || TITLES.dashboard;
+  // Include the pickup in the route title so a load that's far from the start
+  // (e.g. a pickup in another state) reads as the real detour it is, instead of
+  // looking like a short current → dropoff hop.
   const title = (activePage === 'dashboard' || activePage === 'routeselect') && trip
-    ? `${trip.input.curLoc} → ${trip.input.dropLoc}`
+    ? [trip.input.curLoc, trip.input.pickLoc, trip.input.dropLoc].filter(Boolean).join(' → ')
     : meta.t;
 
   const showGenBtn = activePage === 'dashboard' || activePage === 'routeselect' || activePage === 'history' || activePage === 'logs';

@@ -12,3 +12,13 @@ class TripRequestSerializer(serializers.Serializer):
     carrier = serializers.CharField(required=False, default="", allow_blank=True)
     truck_number = serializers.CharField(required=False, default="", allow_blank=True)
     departure_time = serializers.CharField(required=False, default="00:00", allow_blank=True)  # HH:MM
+    # Optional geometry of the route the driver actually selected, as [[lat, lng], ...].
+    # When present, stops and gas-station lookups are placed along THIS path so the
+    # drawn line and the markers always agree.
+    route_geometry = serializers.ListField(
+        child=serializers.ListField(
+            child=serializers.FloatField(), min_length=2, max_length=2
+        ),
+        required=False,
+        default=list,
+    )

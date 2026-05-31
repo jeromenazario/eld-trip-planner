@@ -65,6 +65,73 @@ body { background: var(--bg); margin: 0; color: var(--text); }
   to { transform: rotate(360deg); }
 }
 
+/* Remarks timeline: the axis stays fixed; the ruler unrolls left→right and the
+   diagonal labels reveal below on expand. ------------------------------------- */
+
+/* Simple fade for the Midnight/Noon captions. */
+.remarks-tl .rx-on  { opacity: 0; transition: opacity .3s ease .12s; }
+.remarks-tl.open .rx-on { opacity: 1; }
+
+/* Collapsed-only marks (time labels, dashed prongs) clear out quickly first. */
+.remarks-tl .rx-off { opacity: 1; transition: opacity .18s ease; }
+.remarks-tl.open .rx-off { opacity: 0; }
+
+/* Ruler ticks grow up out of the axis, one after another in a left→right wave.
+   The per-element --d (set inline from x-position) staggers the sweep; using a
+   transition (not a keyframe) means it cleanly reverses on collapse. */
+.remarks-tl .rx-tick {
+  opacity: 0;
+  transform: scaleY(0);
+  transform-box: fill-box;
+  transform-origin: center bottom;
+  transition: transform .34s cubic-bezier(.16, 1, .3, 1) var(--d, 0ms),
+              opacity .2s ease var(--d, 0ms);
+}
+.remarks-tl.open .rx-tick { opacity: 1; transform: scaleY(1); }
+
+/* Hour numbers drop into place riding the same wave. */
+.remarks-tl .rx-hour {
+  opacity: 0;
+  transform: translateY(-5px);
+  transform-box: fill-box;
+  transition: transform .34s cubic-bezier(.16, 1, .3, 1) var(--d, 0ms),
+              opacity .26s ease var(--d, 0ms);
+}
+.remarks-tl.open .rx-hour { opacity: 1; transform: translateY(0); }
+
+/* Converging prongs drop down out of the axis on the same wave. */
+.remarks-tl .rx-prong {
+  opacity: 0;
+  transform: translateY(-7px);
+  transform-box: fill-box;
+  transition: transform .4s cubic-bezier(.16, 1, .3, 1) var(--d, 0ms),
+              opacity .3s ease var(--d, 0ms);
+}
+.remarks-tl.open .rx-prong { opacity: 1; transform: translateY(0); }
+
+/* Diagonal labels grow out from under the axis, after the wave passes. */
+.remarks-tl-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows .42s cubic-bezier(.22, .61, .36, 1) .12s;
+}
+.remarks-tl.open .remarks-tl-body { grid-template-rows: 1fr; }
+.remarks-tl-body > .remarks-tl-body-inner {
+  overflow: hidden;
+  min-height: 0;
+  opacity: 0;
+  transition: opacity .32s ease .24s;
+}
+.remarks-tl.open .remarks-tl-body > .remarks-tl-body-inner { opacity: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  .remarks-tl .rx-on, .remarks-tl .rx-off, .remarks-tl .rx-tick,
+  .remarks-tl .rx-hour, .remarks-tl .rx-prong,
+  .remarks-tl-body, .remarks-tl-body > .remarks-tl-body-inner { transition: none; }
+  .remarks-tl.open .rx-tick { transform: scaleY(1); }
+  .remarks-tl.open .rx-hour, .remarks-tl.open .rx-prong { transform: none; }
+}
+
 @media print {
   @page { size: portrait; margin: 0.5in; }
 
@@ -103,6 +170,17 @@ body { background: var(--bg); margin: 0; color: var(--text); }
   /* Toolbar / buttons never print */
   #eld-log-section .no-print { display: none !important; }
 
+  /* Always print the full remarks timeline, even if collapsed on screen. */
+  #eld-log-section .remarks-tl .rx-on,
+  #eld-log-section .remarks-tl .rx-tick,
+  #eld-log-section .remarks-tl .rx-hour,
+  #eld-log-section .remarks-tl .rx-prong {
+    opacity: 1 !important; transform: none !important;
+  }
+  #eld-log-section .remarks-tl .rx-off { opacity: 0 !important; }
+  #eld-log-section .remarks-tl-body { grid-template-rows: 1fr !important; }
+  #eld-log-section .remarks-tl-body > .remarks-tl-body-inner { overflow: visible !important; opacity: 1 !important; }
+
   /* Reset card/scroll clipping so nothing inside a sheet is cut off */
   #eld-log-section [style*="overflow"] { overflow: visible !important; }
 
@@ -117,4 +195,24 @@ body { background: var(--bg); margin: 0; color: var(--text); }
     break-after: page;
     page-break-after: always;
   }
+}
+
+/* Google Maps InfoWindow — tighten the default chrome. Recent Maps versions add
+   a reserved close-button header band (.gm-style-iw-ch) with top padding that
+   leaves an empty gap above the content; we collapse it and snug the layout. */
+.gm-style-iw-c {
+  padding: 12px 14px !important;
+  border-radius: 12px !important;
+  box-shadow: 0 6px 20px rgba(20, 22, 26, 0.18) !important;
+}
+.gm-style-iw-d {
+  overflow: auto !important;
+}
+.gm-style-iw-ch {
+  padding-top: 0 !important;
+}
+/* Close button snug to the top-right corner */
+.gm-style-iw-c button.gm-ui-hover-effect {
+  top: 2px !important;
+  right: 2px !important;
 }

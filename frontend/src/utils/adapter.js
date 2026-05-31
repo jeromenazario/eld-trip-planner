@@ -13,6 +13,12 @@ export function fmtClock(min) {
   return `${hh}:${String(m).padStart(2, '0')} ${ap}`;
 }
 
+// "Sun, May 31" — short day label for the marker "when does this happen" line.
+export function fmtDay(date) {
+  if (!(date instanceof Date) || isNaN(date)) return '';
+  return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
 export function toDesignDay(log, totalDays, startOffsetMins = 0) {
   let cursor = startOffsetMins;
   const changes = startOffsetMins > 0
@@ -48,7 +54,10 @@ export function toDesignDay(log, totalDays, startOffsetMins = 0) {
     }
     totals[status] = (totals[status] || 0) + durMin;
 
-    const skip = ['off duty', 'sleeper berth', '30-min break', 'drive segment'];
+    // Keep generic idle/driving off the remarks strip, but DO surface the
+    // mandatory 30-min break and the sleeper-berth rest — these are real,
+    // logged remarks a driver writes on a paper sheet ("30 min break", "sleep").
+    const skip = ['off duty', 'drive segment'];
     const shouldSkip = skip.some(s => lbl.includes(s));
     if (entry.label && !shouldSkip) {
       const r = { time: startMin, text: entry.label };
@@ -99,6 +108,31 @@ function resolveStopFor(text, stops) {
   return stop || null;
 }
 
+// Pull a human-readable city out of a Google "vicinity" / formatted address.
+// e.g. "1234 W Madison St, Chicago" → "Chicago"; "Chicago, IL 60601" → "Chicago".
+function cityFromAddress(address) {
+  if (!address) return '';
+  const parts = address.split(',').map(s => s.trim()).filter(Boolean);
+  if (parts.length === 0) return '';
+  // Single-segment addresses are usually just the city/area already.
+  if (parts.length === 1) return parts[0];
+  // Otherwise the city is the segment right after the street line. Strip a
+  // trailing "ST 60601" style state+zip if it got merged into that segment.
+  const city = parts[1] || parts[0];
+  return city.replace(/\s+[A-Z]{2}\s*\d{0,5}$/, '').trim() || city;
+}
+
+// Build the label shown in the REMARKS section, e.g. "Chicago - Conoco" so the
+// driver can see both the city and the specific stop/business at a glance.
+function formatPlace(stop) {
+  const name = (stop.name || stop.label || '').trim();
+  const city = cityFromAddress(stop.address);
+  if (city && name && !name.toLowerCase().includes(city.toLowerCase())) {
+    return `${city} - ${name}`;
+  }
+  return name || stop.address || '';
+}
+
 // Enrich each remark in-place with a resolved geographic place + coordinates,
 // pulled from the geocoded stops array. Mutates day.remarks.
 export function enrichRemarks(days, stops = []) {
@@ -114,8 +148,8 @@ export function enrichRemarks(days, stops = []) {
           r.lat = stop.lat;
           r.lng = stop.lng;
         }
-        // Prefer the geocoded place name, then street address, then the label
-        r.place = stop.name || stop.address || stop.label || r.text;
+        // "City - Business" when we have both, else the best single value.
+        r.place = formatPlace(stop) || r.text;
       }
     }
   }
@@ -132,7 +166,15 @@ export function buildRemarkMarkers(days) {
       const key = `${r.lat.toFixed(4)},${r.lng.toFixed(4)}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      markers.push({ kind: 'remark', pos: [r.lat, r.lng], label: r.place || r.text });
+      markers.push({
+        kind: 'remark',
+        pos: [r.lat, r.lng],
+        label: r.place || r.text,
+        text: r.text,
+        place: r.place || '',
+        time: fmtClock(r.time),
+        when: `${fmtDay(day.date)} · ${fmtClock(r.time)}`,
+      });
     }
   }
   return markers;
@@ -143,7 +185,15 @@ export function toDesignRoute(orsRoute, stops) {
     ?.map(([lng, lat]) => [lat, lng]) || [];
   const markers = stops
     .filter(s => s.lat != null && s.lng != null)
-    .map(s => ({ kind: s.type, pos: [s.lat, s.lng], label: s.label || s.name || '' }));
+    .map(s => ({
+      kind: s.type,
+      pos: [s.lat, s.lng],
+      label: s.label || s.name || '',
+      name: s.name || '',
+      address: s.address || '',
+      mile: s.mile != null ? s.mile : null,
+      when: s.when || null,
+    }));
   return { path, markers };
 }
 
@@ -163,6 +213,11 @@ export function buildSchedule(days) {
     date: day.date,
     drive: day.totals.driving || 0,
     onduty: day.totals.onduty || 0,
+    // Split rest into its two duty-status rows so a day's idle time isn't shown
+    // as one giant "Rest" block (which reads as wasted time when most of it is
+    // really the sleeper-berth reset or post-delivery off-duty at trip's end).
+    sleeper: day.totals.sleeper || 0,
+    off: day.totals.off || 0,
     rest: (day.totals.off || 0) + (day.totals.sleeper || 0),
     startOffset: day.startOffset || 0,
     items: day.remarks.length
@@ -190,6 +245,27 @@ export function adaptBackendResponse(data, formInput) {
   }
 
   enrichRemarks(days, stops);
+
+  // Attach an arrival date+time to each stop so the map popup can answer "when
+  // does the driver get here". The enriched remarks already carry the clock time
+  // and belong to a dated day; index them by rounded coordinate and copy the
+  // first match onto the matching stop. The start has no remark — it's the
+  // departure — so label it from the day-1 departure time.
+  const whenByCoord = {};
+  for (const day of days) {
+    for (const r of day.remarks) {
+      if (r.lat == null || r.lng == null) continue;
+      const key = `${r.lat.toFixed(4)},${r.lng.toFixed(4)}`;
+      if (!whenByCoord[key]) whenByCoord[key] = `${fmtDay(day.date)} · ${fmtClock(r.time)}`;
+    }
+  }
+  for (const s of stops) {
+    if (s.lat == null || s.lng == null) continue;
+    const key = `${s.lat.toFixed(4)},${s.lng.toFixed(4)}`;
+    if (whenByCoord[key]) s.when = whenByCoord[key];
+  }
+  const startStop = stops.find(s => s.type === 'start');
+  if (startStop && days[0]) startStop.when = `${fmtDay(days[0].date)} · ${fmtClock(departureMinutes)}`;
 
   // Pass the last known place across day boundaries so Day 2 transitions that
   // happen before the first named stop don't silently show "En route".
