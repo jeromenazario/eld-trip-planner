@@ -300,6 +300,21 @@ body { background: var(--bg); margin: 0; color: var(--text); }
   .route-arrow { display: none !important; }
 }
 
+/* Per-day REMARKS cards — compress on phones. Each card is a 4-line stack on
+   desktop; on mobile we pull the time onto the same row as the status change and
+   tighten padding/gaps so each remark is ~2 lines and the list isn't a tall
+   scroll. The .remark-head wrapper is display:contents normally, so flipping it
+   to flex here lays time + status out inline. */
+@media (max-width: 640px) {
+  .remarks-cards { gap: 6px !important; }
+  .remark-card { padding: 8px 12px !important; gap: 1px !important; }
+  .remark-head { display: flex !important; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .remark-time { font-size: 11px !important; flex-shrink: 0; }
+  .remark-status { font-size: 12.5px !important; }
+  .remark-action { font-size: 11px !important; }
+  .remark-loc { font-size: 11.5px !important; margin-top: 0 !important; }
+}
+
 /* Daily ELD log sheets — gentle float + shadow on hover. These are large
    full-width cards, so the lift is smaller than the KPI tiles (no scale) and
    the shadow spreads wider to read as the whole sheet rising off the page. */
@@ -391,19 +406,48 @@ body { background: var(--bg); margin: 0; color: var(--text); }
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  touch-action: none;            /* we handle pinch/pan ourselves */
+}
+
+/* User pan/zoom layer — sits OUTSIDE the rotation so gestures map naturally. */
+.log-landscape-zoom {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform-origin: center center;
+  transition: transform .08s linear;
+  will-change: transform;
 }
 
 /* Rotate the content to landscape and size it to the viewport's SHORT edge
-   (now the visual height). The fixed dimensions match the swapped axes:
-   width = viewport height, height = viewport width. */
+   (now the visual height). After rotate(90deg) this `width` becomes the ticket's
+   VERTICAL extent, so we keep it under the viewport height — ~84vh — leaving a
+   clear band of backdrop at top and bottom for the close button and the hint
+   pill, instead of the ticket running edge-to-edge under them. */
 .log-landscape-rot {
   background: #fff;
   border-radius: 14px;
-  padding: 16px 18px;
+  padding: 14px 16px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
   transform: rotate(90deg);
   transform-origin: center center;
-  width: 92vh;
-  max-width: 920px;
+  width: 84vh;
+  max-width: 980px;
 }
 .log-landscape-rot svg { width: 100%; height: auto; }
+
+.log-landscape-hint {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  font-size: 11.5px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(20, 22, 26, 0.5);
+  padding: 6px 14px;
+  border-radius: 20px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 1002;
+}

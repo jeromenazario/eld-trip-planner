@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Card } from './ui';
 import { hrsMin, fmtClock } from '../utils/adapter';
 import { Clock, MapPin, ChevronDown, Maximize2, X } from 'lucide-react';
@@ -396,52 +397,55 @@ function RemarksList({ transitions }) {
         Remarks
       </div>
 
-      <div style={{
+      <div className="remarks-cards" style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
         gap: 8,
       }}>
         {transitions.map((t, i) => (
-          <div key={i} style={{
+          <div key={i} className="remark-card" style={{
             display: 'flex', flexDirection: 'column', gap: 3,
             padding: '10px 14px', borderRadius: 10,
             background: 'var(--accent-tint)', border: '1px solid var(--accent-soft)',
           }}>
-            {/* Time */}
-            <span style={{
-              fontFamily: 'var(--mono)', fontSize: 11.5,
-              fontWeight: 700, color: 'var(--accent)',
-            }}>
-              {fmtClock(t.time)}
-            </span>
+            {/* Time + status share one row on mobile (see .remark-card CSS) */}
+            <div className="remark-head" style={{ display: 'contents' }}>
+              {/* Time */}
+              <span className="remark-time" style={{
+                fontFamily: 'var(--mono)', fontSize: 11.5,
+                fontWeight: 700, color: 'var(--accent)',
+              }}>
+                {fmtClock(t.time)}
+              </span>
 
-            {/* Status change */}
-            <span style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>
-              {STATUS_LABEL[t.from]} → {STATUS_LABEL[t.to]}
-            </span>
+              {/* Status change */}
+              <span className="remark-status" style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>
+                {STATUS_LABEL[t.from]} → {STATUS_LABEL[t.to]}
+              </span>
+            </div>
 
             {/* Action label (e.g. Pickup, Fuel Stop 1) */}
             {t.action && (
-              <span style={{ fontSize: 11.5, color: 'var(--accent)', fontWeight: 600 }}>
+              <span className="remark-action" style={{ fontSize: 11.5, color: 'var(--accent)', fontWeight: 600 }}>
                 {t.action}
               </span>
             )}
 
             {/* Location (exact when at a stop, otherwise estimated) */}
             {t.location ? (
-              <span style={{
+              <span className="remark-loc" style={{
                 display: 'flex', alignItems: 'center', gap: 5,
                 fontSize: 12, color: t.estimated ? 'var(--label)' : 'var(--muted)', marginTop: 1,
               }}>
-                <MapPin size={11} strokeWidth={2} color={t.estimated ? 'var(--label)' : 'var(--accent)'} />
+                <MapPin size={11} strokeWidth={2} color={t.estimated ? 'var(--label)' : 'var(--accent)'} style={{ flexShrink: 0 }} />
                 {t.estimated ? `~ ${t.location}` : t.location}
               </span>
             ) : (
-              <span style={{
+              <span className="remark-loc" style={{
                 display: 'flex', alignItems: 'center', gap: 5,
                 fontSize: 11.5, color: 'var(--label)', fontStyle: 'italic', marginTop: 1,
               }}>
-                <MapPin size={11} strokeWidth={2} color="var(--label)" />
+                <MapPin size={11} strokeWidth={2} color="var(--label)" style={{ flexShrink: 0 }} />
                 En route
               </span>
             )}
@@ -452,10 +456,64 @@ function RemarksList({ transitions }) {
   );
 }
 
+// Pinch-to-zoom + drag-to-pan controller for the landscape viewer. Tracks one
+// finger (pan) or two fingers (pinch) and exposes a {scale, x, y} transform that
+// the overlay applies OUTSIDE the 90° rotation, so gestures feel natural no
+// matter the rotation. Double-tap toggles between fit and 2.2× zoom.
+function usePinchZoom(enabled) {
+  const [t, setT] = useState({ scale: 1, x: 0, y: 0 });
+  const ref = React.useRef(null);
+  const g = React.useRef({ mode: null, startDist: 0, startScale: 1, startX: 0, startY: 0, px: 0, py: 0, lastTap: 0 });
+
+  useEffect(() => { if (!enabled) setT({ scale: 1, x: 0, y: 0 }); }, [enabled]);
+
+  const dist = (ts) => Math.hypot(ts[0].clientX - ts[1].clientX, ts[0].clientY - ts[1].clientY);
+  const clampScale = (s) => Math.max(1, Math.min(5, s));
+
+  const onTouchStart = (e) => {
+    const s = g.current;
+    if (e.touches.length === 2) {
+      s.mode = 'pinch';
+      s.startDist = dist(e.touches);
+      s.startScale = t.scale;
+    } else if (e.touches.length === 1) {
+      s.mode = 'pan';
+      s.startX = e.touches[0].clientX; s.startY = e.touches[0].clientY;
+      s.px = t.x; s.py = t.y;
+      // double-tap detect
+      const now = Date.now();
+      if (now - s.lastTap < 300) {
+        setT(prev => prev.scale > 1 ? { scale: 1, x: 0, y: 0 } : { scale: 2.2, x: 0, y: 0 });
+        s.mode = null;
+      }
+      s.lastTap = now;
+    }
+  };
+  const onTouchMove = (e) => {
+    const s = g.current;
+    if (s.mode === 'pinch' && e.touches.length === 2) {
+      e.preventDefault();
+      const next = clampScale(s.startScale * (dist(e.touches) / s.startDist));
+      setT(prev => ({ ...prev, scale: next }));
+    } else if (s.mode === 'pan' && e.touches.length === 1 && t.scale > 1) {
+      e.preventDefault();
+      setT(prev => ({ ...prev, x: s.px + (e.touches[0].clientX - s.startX), y: s.py + (e.touches[0].clientY - s.startY) }));
+    }
+  };
+  const onTouchEnd = (e) => {
+    const s = g.current;
+    if (e.touches.length === 0) s.mode = null;
+    else if (e.touches.length === 1) { s.mode = 'pan'; s.startX = e.touches[0].clientX; s.startY = e.touches[0].clientY; s.px = t.x; s.py = t.y; }
+  };
+
+  return { t, ref, handlers: { onTouchStart, onTouchMove, onTouchEnd } };
+}
+
 function LogCard({ day }) {
   const transitions = buildTransitions(day);
   const [showTimeline, setShowTimeline] = useState(false);
   const [zoomed, setZoomed] = useState(false);
+  const { t: zt, handlers: zoomHandlers } = usePinchZoom(zoomed);
 
   // While the landscape overlay is open, lock body scroll and allow Esc to close.
   useEffect(() => {
@@ -496,11 +554,11 @@ function LogCard({ day }) {
             <div style={{ fontSize: 16, fontWeight: 600 }}>
               {day.date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 3 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4, flexWrap: 'wrap' }}>
               <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>Daily log · 24-hour record of duty status</div>
               {day.index === 1 && day.startOffset > 0 && (
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600, color: 'var(--accent)', background: 'var(--accent-soft)', padding: '2px 8px', borderRadius: 20 }}>
-                  <Clock size={11} strokeWidth={2} />
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600, color: 'var(--accent)', background: 'var(--accent-soft)', padding: '3px 9px', borderRadius: 20, whiteSpace: 'nowrap', flexShrink: 0, lineHeight: 1.3 }}>
+                  <Clock size={11} strokeWidth={2} style={{ flexShrink: 0 }} />
                   Departs {fmtClock(day.startOffset)}
                 </div>
               )}
@@ -578,8 +636,14 @@ function LogCard({ day }) {
 
       {/* Landscape full-screen viewer (mobile). The grid + remarks are rotated
           90° and sized to the viewport so the whole 24-hour day is legible at
-          once instead of being scrubbed sideways. */}
-      {zoomed && (
+          once instead of being scrubbed sideways.
+
+          Rendered through a portal to <body> — NOT inline in the card — because
+          .log-card sets will-change/transform (for the hover float), which makes
+          a descendant position:fixed resolve against the card instead of the
+          viewport. The portal escapes that containing block so the overlay
+          truly covers the whole screen. */}
+      {zoomed && createPortal(
         <div className="log-landscape no-print" onClick={() => setZoomed(false)}>
           <button
             className="log-landscape-close"
@@ -588,20 +652,34 @@ function LogCard({ day }) {
           >
             <X size={20} strokeWidth={2.4} />
           </button>
-          <div className="log-landscape-stage" onClick={(e) => e.stopPropagation()}>
-            <div className="log-landscape-rot">
-              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10, color: 'var(--text)' }}>
-                Day {day.index} · {day.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-              </div>
-              <LogGrid day={day} transitions={transitions} />
-              {transitions.length > 0 && (
-                <div style={{ marginTop: 6 }}>
-                  <RemarksTimeline day={day} transitions={transitions} expanded />
+          <div
+            className="log-landscape-stage"
+            onClick={(e) => e.stopPropagation()}
+            {...zoomHandlers}
+          >
+            {/* Outer layer = user pan/zoom; inner layer = fixed 90° rotation.
+                Keeping them separate makes pinch/drag feel natural regardless of
+                the rotation. */}
+            <div
+              className="log-landscape-zoom"
+              style={{ transform: `translate(${zt.x}px, ${zt.y}px) scale(${zt.scale})` }}
+            >
+              <div className="log-landscape-rot">
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10, color: 'var(--text)' }}>
+                  Day {day.index} · {day.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
                 </div>
-              )}
+                <LogGrid day={day} transitions={transitions} />
+                {transitions.length > 0 && (
+                  <div style={{ marginTop: 6 }}>
+                    <RemarksTimeline day={day} transitions={transitions} expanded />
+                  </div>
+                )}
+              </div>
             </div>
+            <div className="log-landscape-hint">Pinch to zoom · drag to pan · double-tap to reset</div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </Card>
   );
