@@ -2,12 +2,23 @@ import os
 import math
 import requests
 import polyline as pl
+from django.http import JsonResponse
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 
 from .serializers import TripRequestSerializer
 from .hos import calculate_trip
+
+
+def health(request):
+    """
+    Lightweight liveness probe for uptime pings / keep-warm crons.
+    Plain Django response — no DRF, no throttle, no external calls — so a
+    scheduled ping can keep the free-tier dyno awake without touching the
+    heavier plan-trip endpoint or consuming its rate-limit budget.
+    """
+    return JsonResponse({"status": "ok"})
 
 
 def _parse_time(t):
