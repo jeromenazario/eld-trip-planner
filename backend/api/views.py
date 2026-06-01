@@ -2,6 +2,7 @@ import os
 import math
 import requests
 import polyline as pl
+from concurrent.futures import ThreadPoolExecutor
 from django.http import JsonResponse
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -232,10 +233,14 @@ class PlanTripView(APIView):
         data    = ser.validated_data
         api_key = os.environ.get("GOOGLE_MAPS_API_KEY", "")
 
-        # 1. Geocode the three locations
-        current = geocode(data["current_location"], api_key)
-        pickup  = geocode(data["pickup_location"],  api_key)
-        dropoff = geocode(data["dropoff_location"], api_key)
+        # 1. Geocode the three locations — in parallel. They're independent
+        #    network round-trips, so running them concurrently collapses three
+        #    sequential calls into roughly one call's worth of latency.
+        with ThreadPoolExecutor(max_workers=3) as ex:
+            current, pickup, dropoff = ex.map(
+                lambda loc: geocode(loc, api_key),
+                [data["current_location"], data["pickup_location"], data["dropoff_location"]],
+            )
 
         # 2. Resolve the route geometry.
         #    If the client passed the geometry of the route the driver actually
@@ -305,50 +310,38 @@ class PlanTripView(APIView):
             return interpolate_along_route(route_coords, frac * actual_miles)
 
         stops = result["stops"]
+
+        # Endpoints already have coordinates from geocoding — assign them directly
+        # (no network needed).
         for stop in stops:
             stype = stop["type"]
-
             if stype == "start" and current:
-                stop.update(lat=current["lat"], lng=current["lng"],
-                            name=data["current_location"])
-
+                stop.update(lat=current["lat"], lng=current["lng"], name=data["current_location"])
             elif stype == "pickup" and pickup:
-                stop.update(lat=pickup["lat"], lng=pickup["lng"],
-                            name=data["pickup_location"])
-
+                stop.update(lat=pickup["lat"], lng=pickup["lng"], name=data["pickup_location"])
             elif stype == "dropoff" and dropoff:
-                stop.update(lat=dropoff["lat"], lng=dropoff["lng"],
-                            name=data["dropoff_location"])
+                stop.update(lat=dropoff["lat"], lng=dropoff["lng"], name=data["dropoff_location"])
 
-            elif stype == "rest" and route_coords:
-                rest_lat, rest_lng = route_point(stop["mile"])
-                place = nearest_truck_stop(rest_lat, rest_lng, api_key) if api_key else None
-                if place:
-                    stop.update(
-                        lat     = place["lat"],
-                        lng     = place["lng"],
-                        name    = place["name"],
-                        address = place["address"],
-                    )
-                else:
-                    stop.update(lat=rest_lat, lng=rest_lng)
+        # Fuel and rest stops each need a Places lookup along the route. Those are
+        # independent network calls, so resolve them all in parallel instead of
+        # one-at-a-time — this is the bulk of the request's latency.
+        def resolve_stop_place(stop):
+            lat, lng = route_point(stop["mile"])
+            if stop["type"] == "fuel":
+                place = nearest_gas_station(lat, lng, api_key) if api_key else None
+            else:  # rest
+                place = nearest_truck_stop(lat, lng, api_key) if api_key else None
+            return stop, place, lat, lng
 
-            elif stype == "fuel" and route_coords:
-                # Interpolate position along actual route polyline
-                fuel_lat, fuel_lng = route_point(stop["mile"])
-
-                # Find the nearest real gas station at that point
-                place = nearest_gas_station(fuel_lat, fuel_lng, api_key) if api_key else None
-                if place:
-                    stop.update(
-                        lat     = place["lat"],
-                        lng     = place["lng"],
-                        name    = place["name"],
-                        address = place["address"],
-                    )
-                else:
-                    # Fallback: use interpolated point, no real name
-                    stop.update(lat=fuel_lat, lng=fuel_lng)
+        lookup_stops = [s for s in stops if s["type"] in ("fuel", "rest")] if route_coords else []
+        if lookup_stops:
+            with ThreadPoolExecutor(max_workers=min(8, len(lookup_stops))) as ex:
+                for stop, place, lat, lng in ex.map(resolve_stop_place, lookup_stops):
+                    if place:
+                        stop.update(lat=place["lat"], lng=place["lng"],
+                                    name=place["name"], address=place["address"])
+                    else:
+                        stop.update(lat=lat, lng=lng)
 
         return Response({
             "logs":     result["logs"],
