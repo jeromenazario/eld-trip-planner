@@ -93,8 +93,32 @@ function MarkerDetails({ m, place }) {
   const showPlace = place && place.trim().toLowerCase() !== (title || '').trim().toLowerCase();
   const whenLabel = m.kind === 'start' ? 'Departs' : 'When';
 
+  // A small Street View photo of the actual spot fills the empty band at the top
+  // of the popup. If Google has no imagery there, onError hides the <img> so the
+  // popup falls back cleanly to the text-only layout. Hidden until it loads so a
+  // broken/grey tile never flashes.
+  const [imgOk, setImgOk] = useState(false);
+  const lat = m.pos?.[0], lng = m.pos?.[1];
+  const streetUrl = API_KEY && lat != null && lng != null
+    ? `https://maps.googleapis.com/maps/api/streetview?size=280x110&location=${lat},${lng}&fov=80&pitch=0&source=outdoor&key=${API_KEY}`
+    : null;
+
   return (
     <div style={{ minWidth: 170, maxWidth: 250, padding: '1px 2px 3px' }}>
+      {streetUrl && (
+        <img
+          src={streetUrl}
+          alt=""
+          onLoad={() => setImgOk(true)}
+          onError={() => setImgOk(false)}
+          style={{
+            display: imgOk ? 'block' : 'none',
+            width: '100%', height: 92, objectFit: 'cover',
+            borderRadius: 10, marginBottom: 9,
+            border: '1px solid rgba(0,0,0,0.06)',
+          }}
+        />
+      )}
       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
         <span style={{ width: 9, height: 9, borderRadius: '50%', background: color, flexShrink: 0 }} />
         <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase', color }}>
@@ -347,14 +371,26 @@ function MapInner({ route, stops, remarkMarkers = [] }) {
     setActive(null);
   }, [path]);
 
-  // Open a pin's popup and center the clicked pin dead-center in the viewport —
-  // both horizontally and vertically. The map is a fixed 380px tall, so a
-  // centered pin always leaves enough headroom for the popup (which opens
-  // upward) to show in full. InfoWindow auto-pan stays disabled (below) so it
-  // can't drag the pin back off-center to fit the bubble.
+  // Open a pin's popup and center the POPUP (not the pin) in the viewport. The
+  // InfoWindow opens UPWARD from the pin, so to put the bubble in the middle we
+  // pan to a point BELOW the pin by ~half the popup's height. We do that in pixel
+  // space (project the pin → shift down → unproject) so it's exact at any zoom.
+  // InfoWindow auto-pan stays disabled (below) so it can't fight this.
+  const POPUP_HALF_PX = 150; // ≈ half the popup's on-screen height incl. image
   const openMarker = useCallback((m) => {
     setActive(m);
-    if (mapRef.current) mapRef.current.panTo({ lat: m.pos[0], lng: m.pos[1] });
+    const map = mapRef.current;
+    if (!map) return;
+    const latLng = new window.google.maps.LatLng(m.pos[0], m.pos[1]);
+    const proj = map.getProjection();
+    if (!proj) { map.panTo(latLng); return; }
+    const scale = 2 ** map.getZoom();
+    const pt = proj.fromLatLngToPoint(latLng);
+    // Pan the map CENTER to a point north of the pin. +y in world-point space is
+    // south, so subtracting moves the center north → the pin ends up BELOW center
+    // on screen, leaving the upward-opening popup centered in the viewport.
+    const shifted = new window.google.maps.Point(pt.x, pt.y - POPUP_HALF_PX / scale);
+    map.panTo(proj.fromPointToLatLng(shifted));
   }, []);
 
   return (

@@ -244,8 +244,10 @@ def _simulate_hos(tasks, cycle_used_start, driver_name, co_driver, carrier, truc
                     # Determine why we're blocked
                     if cycle_left <= 1e-9:
                         raise ValueError(
-                            "Cycle hours exhausted (70 hr used). "
-                            "A 34-hour restart is required before this trip."
+                            "You don't have enough hours left in your 70-hour "
+                            "cycle to finish this trip. Take a 34-hour restart to "
+                            "reset your cycle, then plan the trip again — or lower "
+                            "the cycle hours you've already used."
                         )
                     # Shift/window limit hit — take rest and continue
                     advance_day()
