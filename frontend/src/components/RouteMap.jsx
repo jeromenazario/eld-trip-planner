@@ -143,7 +143,7 @@ function RemarksStrip({ schedule }) {
 
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(430px, 1fr))',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(min(430px, 100%), 1fr))',
         columnGap: 36, rowGap: 12,
       }}>
         {items.map((it, i) => (

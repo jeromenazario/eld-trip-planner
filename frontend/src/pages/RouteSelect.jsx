@@ -2,6 +2,7 @@ import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { GoogleMap, Polyline, Marker, useJsApiLoader } from '@react-google-maps/api';
 import { Clock, Calendar, AlertTriangle, Fuel, BedDouble, Check, ArrowRight, Navigation } from 'lucide-react';
 import { Card } from '../components/ui';
+import useIsMobile from '../hooks/useIsMobile';
 
 const LIBRARIES = ['places'];
 const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
@@ -68,6 +69,7 @@ function gmRouteToData(gmRoute, meta) {
     ...meta,
     path,
     miles: distMi,                       // numeric distance — used to re-plan the HOS schedule
+    driveHours: totalSecs / 3600,        // real driving time — fed to the HOS engine
     dist:  `${distMi.toLocaleString()} mi`,
     drive: fmtDur(totalSecs),
     days:  `${Math.ceil(totalSecs / (11 * 3600))} days`,
@@ -215,7 +217,7 @@ function SelectBtn({ selected, color }) {
   );
 }
 
-function RouteCard({ r, selected, hovered, onHover, onSelect }) {
+function RouteCard({ r, selected, hovered, onHover, onSelect, isMobile }) {
   const [h, setH] = useState(false);
   const [planReady, setPlanReady] = useState(false);
 
@@ -249,7 +251,7 @@ function RouteCard({ r, selected, hovered, onHover, onSelect }) {
           </span>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap: 8 }}>
           <MetricPill icon={Navigation} label="Distance" value={r.dist} />
           <MetricPill icon={Clock}      label="Drive"    value={r.drive} />
           <MetricPill icon={Calendar}   label="HOS Days" value={r.days} />
@@ -303,6 +305,7 @@ function RouteSelectInner({ trip, onConfirm }) {
   const [selected, setSelected] = useState(null);
   const [gmRoutes, setGmRoutes] = useState(null);
   const [fetching, setFetching] = useState(true);
+  const isMobile = useIsMobile();
 
   // Fetch real alternative routes from Google Directions API
   useEffect(() => {
@@ -360,11 +363,12 @@ function RouteSelectInner({ trip, onConfirm }) {
   };
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1.5fr minmax(360px, 1fr)', gap: 20,
-      alignItems: 'start', height: 'calc(100vh - 160px)', minHeight: 560 }}>
+    <div style={isMobile
+      ? { display: 'flex', flexDirection: 'column', gap: 16 }
+      : { display: 'grid', gridTemplateColumns: '1.5fr minmax(360px, 1fr)', gap: 20, alignItems: 'start', height: 'calc(100vh - 160px)', minHeight: 560 }}>
 
       {/* Map */}
-      <Card pad={false} style={{ overflow: 'hidden', height: '100%', position: 'relative' }}>
+      <Card pad={false} style={{ overflow: 'hidden', height: isMobile ? 320 : '100%', flexShrink: 0, position: 'relative' }}>
         <div style={{ position: 'absolute', inset: 6, borderRadius: 'calc(var(--radius) - 4px)', overflow: 'hidden' }}>
           {routes ? (
             <RouteSelectMap
@@ -383,21 +387,23 @@ function RouteSelectInner({ trip, onConfirm }) {
       </Card>
 
       {/* Cards + CTA */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, height: '100%', overflow: 'auto', paddingRight: 2 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, height: isMobile ? 'auto' : '100%', overflow: isMobile ? 'visible' : 'auto', paddingRight: 2 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 1 }}>
           <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600, letterSpacing: '-.01em' }}>
             {routes ? `${routes.length} routes found` : 'Finding routes…'}
           </h2>
-          <span style={{ fontSize: 12, color: 'var(--muted)' }}>
-            {[trip.input.curLoc, trip.input.pickLoc, trip.input.dropLoc].filter(Boolean).join(' → ')}
-          </span>
+          {!isMobile && (
+            <span style={{ fontSize: 12, color: 'var(--muted)' }}>
+              {[trip.input.curLoc, trip.input.pickLoc, trip.input.dropLoc].filter(Boolean).join(' → ')}
+            </span>
+          )}
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {routes ? routes.map((r) => (
             <RouteCard key={r.id} r={r}
               selected={selected === r.id} hovered={hovered === r.id}
-              onHover={setHovered} onSelect={setSelected} />
+              onHover={setHovered} onSelect={setSelected} isMobile={isMobile} />
           )) : [1, 2, 3].map(i => (
             <div key={i} style={{ height: 160, borderRadius: 14, background: '#f3f3f2', border: '1px solid var(--border)' }} />
           ))}

@@ -13,7 +13,7 @@ const CARDS = [
 export default function StatsBar({ stats }) {
   if (!stats) return null;
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 16 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 16 }}>
       {CARDS.map(({ key, label, unit, Icon }) => {
         const warn = key === 'cycleRemain' && stats[key] < 10;
         const val = typeof stats[key] === 'number' && !Number.isInteger(stats[key])

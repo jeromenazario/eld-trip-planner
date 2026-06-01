@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Truck, LayoutDashboard, Plus, History, Grid, Settings, ChevronRight, ChevronLeft } from 'lucide-react';
+import { Truck, LayoutDashboard, Plus, History, Grid, Settings, ChevronRight, ChevronLeft, X } from 'lucide-react';
 import { DashedLine } from './ui';
 
 const NAV = [
@@ -54,7 +54,7 @@ function NavItem({ Icon, label, active, collapsed, onClick }) {
   );
 }
 
-export default function Sidebar({ activePage, onNavigate, driver = 'John Doe', collapsed, setCollapsed, onProfileClick }) {
+export default function Sidebar({ activePage, onNavigate, driver = 'John Doe', collapsed, setCollapsed, mobile = false, onClose }) {
   const W = collapsed ? 84 : 250;
   const initials = driver.split(' ').map(w => w[0]).slice(0, 2).join('');
 
@@ -87,6 +87,15 @@ export default function Sidebar({ activePage, onNavigate, driver = 'John Doe', c
             <div style={{ fontSize: 11, color: 'var(--label)', whiteSpace: 'nowrap' }}>Hours of Service</div>
           </div>
         )}
+        {mobile && (
+          <button
+            onClick={onClose}
+            aria-label="Close menu"
+            style={{ marginLeft: 'auto', width: 34, height: 34, borderRadius: 10, border: '1px solid var(--border)', background: 'var(--card)', display: 'grid', placeItems: 'center', color: 'var(--muted)', cursor: 'pointer' }}
+          >
+            <X size={18} strokeWidth={2} />
+          </button>
+        )}
       </div>
 
       <div style={{ padding: collapsed ? '0 24px' : '0 18px' }}>
@@ -107,19 +116,21 @@ export default function Sidebar({ activePage, onNavigate, driver = 'John Doe', c
         ))}
       </nav>
 
-      {/* Collapse toggle */}
-      <button
-        onClick={() => setCollapsed(c => !c)}
-        aria-label="Toggle menu"
-        style={{
-          position: 'absolute', top: 76, right: -13, width: 26, height: 26,
-          borderRadius: '50%', background: 'var(--card)', border: '1px solid var(--border)',
-          display: 'grid', placeItems: 'center', color: 'var(--muted)',
-          boxShadow: 'var(--shadow)', cursor: 'pointer', zIndex: 6,
-        }}
-      >
-        {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
-      </button>
+      {/* Collapse toggle — desktop only (mobile uses the drawer close button) */}
+      {!mobile && (
+        <button
+          onClick={() => setCollapsed(c => !c)}
+          aria-label="Toggle menu"
+          style={{
+            position: 'absolute', top: 76, right: -13, width: 26, height: 26,
+            borderRadius: '50%', background: 'var(--card)', border: '1px solid var(--border)',
+            display: 'grid', placeItems: 'center', color: 'var(--muted)',
+            boxShadow: 'var(--shadow)', cursor: 'pointer', zIndex: 6,
+          }}
+        >
+          {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+        </button>
+      )}
 
       <div style={{ padding: collapsed ? '0 24px' : '0 18px' }}>
         <DashedLine color="var(--border-strong)" dash={5} gap={5} />

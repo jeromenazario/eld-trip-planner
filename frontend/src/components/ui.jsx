@@ -72,9 +72,9 @@ export function Btn({ children, variant = 'primary', icon, size = 'md', style, .
     >
       {ripples.map(rp => (
         <span key={rp.id} style={{
-          position: 'absolute', left: rp.x, top: rp.y, width: 0, height: 0,
+          position: 'absolute', left: rp.x, top: rp.y, width: 560, height: 560,
           borderRadius: '50%', background: 'rgba(255,255,255,.45)',
-          transform: 'translate(-50%,-50%)', pointerEvents: 'none',
+          transform: 'translate(-50%,-50%) scale(.36)', pointerEvents: 'none',
           animation: 'btnRipple .6s ease-out forwards',
         }} />
       ))}

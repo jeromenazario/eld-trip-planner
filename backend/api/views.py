@@ -263,6 +263,7 @@ class PlanTripView(APIView):
                 carrier           = data.get("carrier", ""),
                 truck_number      = data.get("truck_number", ""),
                 start_hour        = _parse_time(data.get("departure_time", "00:00")),
+                drive_hours       = data.get("drive_hours", 0),
             )
         except ValueError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)

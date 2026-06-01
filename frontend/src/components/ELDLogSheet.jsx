@@ -240,6 +240,29 @@ function RemarksTimeline({ day, transitions, expanded }) {
     };
   });
 
+  // Spread the diagonal labels HORIZONTALLY so two stops close in time don't
+  // print on top of each other. The labels are rotated 60°, so two anchored at
+  // the same x run along the same diagonal and overlap no matter how far down
+  // you push them — only a sideways gap actually separates them. Walking
+  // left→right we shove each anchor right until it clears the previous one, then
+  // recentre the whole group so it doesn't drift off the right edge. A thin
+  // leader line links each shifted label back to its real prong on the axis.
+  const LABEL_MIN_DX = 26;   // min horizontal gap (px) between label anchors
+  let prevX = -Infinity;
+  marks.forEach(m => {
+    m.labelX = Math.max(m.xmid, prevX + LABEL_MIN_DX);
+    prevX = m.labelX;
+  });
+  // If the rightmost label pushed past the chart edge, slide the whole set left
+  // by the overflow (clamped so the leftmost can't go past the axis start).
+  if (marks.length) {
+    const overflow = marks[marks.length - 1].labelX - G.x1;
+    if (overflow > 0) {
+      const shift = Math.min(overflow, marks[0].labelX - G.x0);
+      marks.forEach(m => { m.labelX -= shift; });
+    }
+  }
+
   const { axisY } = HEAD;
   const prongTop = axisY + HEAD.prongDrop;
   const joinY    = prongTop + HEAD.prongH;
@@ -326,22 +349,31 @@ function RemarksTimeline({ day, transitions, expanded }) {
         ))}
       </svg>
 
-      {/* BODY — diagonal remark/location labels, revealed on expand */}
+      {/* BODY — diagonal remark/location labels, revealed on expand. Labels that
+          crowd together are spread sideways (see labelX above) and linked back to
+          their real prong by a thin leader so the association stays clear. */}
       <div className="remarks-tl-body">
         <div className="remarks-tl-body-inner">
           <svg viewBox={`0 0 ${BODY.VW} ${BODY.VH}`} width="100%" style={{ display: 'block' }}>
             {marks.map((b, i) => {
               const locLabel = b.location ? (b.estimated ? `~ ${b.location}` : b.location) : null;
               const remarkLabel = b.action || null;
+              const shifted = Math.abs(b.labelX - b.xmid) > 0.5;
               return (
-                <g key={'lb' + i} transform={`translate(${b.xmid.toFixed(1)} 6) rotate(60)`}>
-                  {remarkLabel && (
-                    <text x={5} y={0} fontSize="10.5" fontWeight="600" fill="#1f2937">{remarkLabel}</text>
+                <g key={'lb' + i}>
+                  {shifted && (
+                    <line x1={b.xmid} x2={b.labelX} y1={0} y2={7}
+                      stroke="var(--border-strong)" strokeWidth={1} />
                   )}
-                  {locLabel && (
-                    <text x={5} y={remarkLabel ? 12 : 0} fontSize="9.5" fontWeight="600"
-                      fill={b.estimated ? 'var(--label)' : 'var(--accent)'}>{locLabel}</text>
-                  )}
+                  <g transform={`translate(${b.labelX.toFixed(1)} 7) rotate(60)`}>
+                    {remarkLabel && (
+                      <text x={5} y={0} fontSize="10.5" fontWeight="600" fill="#1f2937">{remarkLabel}</text>
+                    )}
+                    {locLabel && (
+                      <text x={5} y={remarkLabel ? 12 : 0} fontSize="9.5" fontWeight="600"
+                        fill={b.estimated ? 'var(--label)' : 'var(--accent)'}>{locLabel}</text>
+                    )}
+                  </g>
                 </g>
               );
             })}
@@ -432,7 +464,7 @@ function LogCard({ day }) {
   ];
 
   return (
-    <Card pad={false} style={{ overflow: 'hidden' }}>
+    <Card pad={false} className="log-card" style={{ overflow: 'hidden' }}>
       {/* Header */}
       <div style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
@@ -477,17 +509,21 @@ function LogCard({ day }) {
         </div>
       </div>
 
-      {/* Overview: duty grid */}
-      <div style={{ padding: '20px 18px 4px', overflowX: 'auto' }}>
-        <LogGrid day={day} transitions={transitions} />
+      {/* Overview: duty grid — swipes sideways on mobile (.log-scroll) */}
+      <div className="log-scroll" style={{ padding: '20px 18px 4px' }}>
+        <div className="log-scroll-inner">
+          <LogGrid day={day} transitions={transitions} />
+        </div>
       </div>
 
       {/* REMARKS strip: one timeline whose axis stays fixed — expanding grows the
           hour ruler, prongs and diagonal labels out of the same line. */}
       {transitions.length > 0 && (
         <>
-          <div style={{ padding: '4px 18px 0', overflowX: 'auto' }}>
-            <RemarksTimeline day={day} transitions={transitions} expanded={showTimeline} />
+          <div className="log-scroll" style={{ padding: '4px 18px 0' }}>
+            <div className="log-scroll-inner">
+              <RemarksTimeline day={day} transitions={transitions} expanded={showTimeline} />
+            </div>
           </div>
 
           {/* Toggle drives the strip above */}

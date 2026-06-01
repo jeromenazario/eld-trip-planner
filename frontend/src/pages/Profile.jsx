@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Card, Btn, Field, Input } from '../components/ui';
 import { User, Mail, CreditCard, MapPin, Home } from 'lucide-react';
+import useIsMobile from '../hooks/useIsMobile';
 
 const CDL_CLASSES = ['Class A', 'Class B', 'Class C'];
 const US_STATES = [
@@ -52,6 +53,7 @@ export default function Profile() {
     homeTerminal: '',
   });
   const [saved, setSaved] = useState(false);
+  const isMobile = useIsMobile();
 
   const set = key => val => { setForm(f => ({ ...f, [key]: val })); setSaved(false); };
   const setInput = key => e => set(key)(e.target.value);
@@ -84,7 +86,7 @@ export default function Profile() {
       {/* Personal info */}
       <Card>
         <SectionHeader title="Personal information" sub="Your name and contact details" />
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14 }}>
           <Field label="First name">
             <Input icon={<User />} placeholder="John" value={form.firstName} onChange={setInput('firstName')} />
           </Field>
@@ -103,7 +105,7 @@ export default function Profile() {
       {/* CDL info */}
       <Card>
         <SectionHeader title="License & credentials" sub="Your commercial driver's license details" />
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: 14 }}>
           <Field label="CDL number" style={{ gridColumn: 'span 1' }}>
             <Input icon={<CreditCard />} placeholder="TX-1234567" value={form.cdlNumber} onChange={setInput('cdlNumber')} />
           </Field>
