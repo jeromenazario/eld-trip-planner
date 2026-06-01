@@ -177,6 +177,10 @@ export default function TripForm({ onSubmit, loading }) {
       truck_number:     v.truck,
       departure_time:   v.departureTime || new Date().toTimeString().slice(0, 5),
       drive_hours:      roadHours || 0,
+      // Coords from Places autocomplete — lets the backend skip re-geocoding.
+      current_coords:   coords.current ? [coords.current.lat, coords.current.lng] : [],
+      pickup_coords:    coords.pickup  ? [coords.pickup.lat,  coords.pickup.lng]  : [],
+      dropoff_coords:   coords.dropoff ? [coords.dropoff.lat, coords.dropoff.lng] : [],
     });
   };
 

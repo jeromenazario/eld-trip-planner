@@ -16,6 +16,16 @@ class TripRequestSerializer(serializers.Serializer):
     carrier = serializers.CharField(required=False, default="", allow_blank=True)
     truck_number = serializers.CharField(required=False, default="", allow_blank=True)
     departure_time = serializers.CharField(required=False, default="00:00", allow_blank=True)  # HH:MM
+    # Coordinates the frontend already resolved via Places autocomplete, as
+    # [lat, lng]. When present the backend reuses them and SKIPS re-geocoding
+    # that location — the autocomplete already did the geocode. Empty = geocode
+    # server-side as a fallback (e.g. a freehand-typed location).
+    current_coords = serializers.ListField(
+        child=serializers.FloatField(), min_length=2, max_length=2, required=False, default=list)
+    pickup_coords = serializers.ListField(
+        child=serializers.FloatField(), min_length=2, max_length=2, required=False, default=list)
+    dropoff_coords = serializers.ListField(
+        child=serializers.FloatField(), min_length=2, max_length=2, required=False, default=list)
     # Optional geometry of the route the driver actually selected, as [[lat, lng], ...].
     # When present, stops and gas-station lookups are placed along THIS path so the
     # drawn line and the markers always agree.

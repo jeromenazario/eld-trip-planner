@@ -11,6 +11,16 @@ from rest_framework import status
 from .serializers import TripRequestSerializer
 from .hos import calculate_trip
 
+# Per-call timeout for Google API requests. Kept short so a single slow/hanging
+# Google response fails fast and falls back gracefully, instead of stacking up
+# into a 50s request. The normal case responds well under this.
+GOOGLE_TIMEOUT = 6
+
+# Shared HTTP session so connections to Google are pooled and kept alive across
+# calls instead of re-doing the TLS handshake every time. Safe to share across
+# the request threads (urllib3's connection pool is thread-safe for GETs).
+_session = requests.Session()
+
 
 def _cap_route_geometry(route, max_points=1500):
     """
@@ -59,10 +69,10 @@ def _parse_time(t):
 
 def geocode(location_str, api_key):
     try:
-        resp = requests.get(
+        resp = _session.get(
             "https://maps.googleapis.com/maps/api/geocode/json",
             params={"address": location_str, "key": api_key},
-            timeout=10,
+            timeout=GOOGLE_TIMEOUT,
         )
         data = resp.json()
         if data.get("results"):
@@ -119,11 +129,15 @@ def interpolate_along_route(coords, target_mile):
 def nearest_truck_stop(lat, lng, api_key):
     """
     Find the nearest truck stop or rest area via Google Places Nearby Search.
-    Falls back to gas station if no truck stop found.
+    The keyword searches run in PARALLEL (instead of one-by-one) so a slow or
+    empty response can't stack three timeouts into ~30s. The first keyword with
+    a result wins, preferring "truck stop" > "rest area" > "travel plaza".
     """
-    for keyword in ["truck stop", "rest area", "travel plaza"]:
+    keywords = ["truck stop", "rest area", "travel plaza"]
+
+    def search(keyword):
         try:
-            resp = requests.get(
+            resp = _session.get(
                 "https://maps.googleapis.com/maps/api/place/nearbysearch/json",
                 params={
                     "location": f"{lat},{lng}",
@@ -131,7 +145,7 @@ def nearest_truck_stop(lat, lng, api_key):
                     "keyword":  keyword,
                     "key":      api_key,
                 },
-                timeout=10,
+                timeout=GOOGLE_TIMEOUT,
             )
             results = resp.json().get("results", [])
             if results:
@@ -145,6 +159,13 @@ def nearest_truck_stop(lat, lng, api_key):
                 }
         except Exception:
             pass
+        return None
+
+    with ThreadPoolExecutor(max_workers=len(keywords)) as ex:
+        found = list(ex.map(search, keywords))
+    for r in found:   # preserve keyword priority order
+        if r:
+            return r
     return None
 
 
@@ -154,7 +175,7 @@ def nearest_gas_station(lat, lng, api_key):
     to the given coordinate. Returns a dict with name, lat, lng, address.
     """
     try:
-        resp = requests.get(
+        resp = _session.get(
             "https://maps.googleapis.com/maps/api/place/nearbysearch/json",
             params={
                 "location": f"{lat},{lng}",
@@ -162,7 +183,7 @@ def nearest_gas_station(lat, lng, api_key):
                 "type":     "gas_station",
                 "key":      api_key,
             },
-            timeout=10,
+            timeout=GOOGLE_TIMEOUT,
         )
         data = resp.json()
         results = data.get("results", [])
@@ -198,10 +219,10 @@ def get_route_with_coords(waypoints, api_key):
             params["waypoints"] = "|".join(
                 f"{p['lat']},{p['lng']}" for p in waypoints[1:-1]
             )
-        resp = requests.get(
+        resp = _session.get(
             "https://maps.googleapis.com/maps/api/directions/json",
             params=params,
-            timeout=15,
+            timeout=GOOGLE_TIMEOUT + 2,
         )
         data = resp.json()
         if data.get("routes"):
@@ -255,13 +276,24 @@ class PlanTripView(APIView):
         data    = ser.validated_data
         api_key = os.environ.get("GOOGLE_MAPS_API_KEY", "")
 
-        # 1. Geocode the three locations — in parallel. They're independent
-        #    network round-trips, so running them concurrently collapses three
-        #    sequential calls into roughly one call's worth of latency.
+        # 1. Resolve the three locations to coordinates.
+        #    Reuse the coords the frontend already got from Places autocomplete
+        #    when present (no redundant round-trip); only geocode the ones that
+        #    arrived without coords (e.g. freehand-typed). The geocode fallbacks
+        #    run in parallel so they don't stack up.
+        def resolve_location(loc_str, coords):
+            if coords and len(coords) == 2:
+                return {"lat": coords[0], "lng": coords[1], "name": loc_str}
+            return geocode(loc_str, api_key)
+
         with ThreadPoolExecutor(max_workers=3) as ex:
             current, pickup, dropoff = ex.map(
-                lambda loc: geocode(loc, api_key),
-                [data["current_location"], data["pickup_location"], data["dropoff_location"]],
+                lambda a: resolve_location(*a),
+                [
+                    (data["current_location"], data.get("current_coords")),
+                    (data["pickup_location"],  data.get("pickup_coords")),
+                    (data["dropoff_location"], data.get("dropoff_coords")),
+                ],
             )
 
         # 2. Resolve the route geometry.
