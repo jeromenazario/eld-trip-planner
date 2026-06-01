@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import TripForm from './components/TripForm';
 import TripResult from './pages/NewTrip';
@@ -7,7 +7,7 @@ import ELDLogSheet from './components/ELDLogSheet';
 import Profile from './pages/Profile';
 import Settings from './pages/Settings';
 import { DashedLine, Btn, DottedBtn } from './components/ui';
-import { Bell, Plus, Printer, Download, Menu } from 'lucide-react';
+import { Bell, Plus, Printer, Download, Menu, AlertTriangle } from 'lucide-react';
 import { planTrip } from './api/tripApi';
 import { adaptBackendResponse } from './utils/adapter';
 import useIsMobile from './hooks/useIsMobile';
@@ -129,12 +129,72 @@ export default function App() {
   const [lastPayload, setLastPayload] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  // When the user opens the New Trip form while a plan already exists, we frost
+  // the form and require an explicit "remove current & start new" confirm before
+  // they can fill it out — so a fresh plan can't quietly clobber the old one.
+  const [confirmNew, setConfirmNew] = useState(false);
   const isMobile = useIsMobile();
 
-  // On mobile, picking a destination also closes the drawer.
-  const navigate = (key) => { setActivePage(key); setDrawerOpen(false); };
+  // Open the New Trip form. If a plan already exists, gate it behind the frosted
+  // "remove current & start new" confirmation instead of going straight in.
+  const openNewTrip = () => {
+    setConfirmNew(!!trip);
+    setActivePage('newtrip');
+    setDrawerOpen(false);
+  };
+
+  // All navigation funnels through here so the "New Trip" entry — from the
+  // sidebar, drawer or any button — always hits the replace-confirm gate.
+  const navigate = (key) => {
+    if (key === 'newtrip') return openNewTrip();
+    setActivePage(key);
+    setDrawerOpen(false);
+  };
+
+  // Confirmed: wipe the existing plan and all derived state, then reveal the form.
+  const clearAndStartNew = () => {
+    setTrip(null);
+    setLastPayload(null);
+    setError(null);
+    setConfirmNew(false);
+  };
 
   const driverName = trip?.input?.driver || 'John Doe';
+
+  // Warn before a browser reload or tab close while a plan is in memory. The
+  // trip lives only in component state (no DB), so leaving would discard it —
+  // this mirrors the in-app "replace current trip?" guard at the browser level.
+  useEffect(() => {
+    if (!trip) return;
+    const onBeforeUnload = (e) => {
+      e.preventDefault();
+      e.returnValue = '';   // Chrome requires returnValue to be set to prompt
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [trip]);
+
+  // Turn an API/network failure into a single readable sentence. The backend
+  // sends HOS problems as { "error": "…" } and validation as { field: ["…"] };
+  // we pull those out so the user sees plain text, never a raw JSON blob.
+  const formatError = (err) => {
+    if (err?.response?.status === 429)
+      return 'Too many requests — please wait a moment and try again.';
+    const data = err?.response?.data;
+    if (data) {
+      if (typeof data === 'string') return data;
+      if (data.error)  return data.error;
+      if (data.detail) return data.detail;
+      // Field validation errors: "Field name: first message".
+      const firstKey = Object.keys(data)[0];
+      if (firstKey) {
+        const val = data[firstKey];
+        const msg = Array.isArray(val) ? val[0] : val;
+        return `${firstKey.replace(/_/g, ' ')}: ${msg}`;
+      }
+    }
+    return err?.message || 'Something went wrong while planning the trip. Please try again.';
+  };
 
   const handleGenerate = async (payload) => {
     setLoading(true);
@@ -146,13 +206,7 @@ export default function App() {
       setLastPayload(payload);     // keep it so a route choice can re-plan
       setActivePage('routeselect');
     } catch (err) {
-      setError(
-        err?.response?.status === 429
-          ? 'Too many requests — please wait a moment and try again.'
-          : err?.response?.data
-            ? JSON.stringify(err.response.data, null, 2)
-            : err.message || 'Request failed'
-      );
+      setError(formatError(err));
     } finally {
       setLoading(false);
     }
@@ -183,13 +237,7 @@ export default function App() {
       if (selectedRoute.path?.length) designData.route.path = selectedRoute.path;
       setTrip(designData);
     } catch (err) {
-      setError(
-        err?.response?.status === 429
-          ? 'Too many requests — please wait a moment and try again.'
-          : err?.response?.data
-            ? JSON.stringify(err.response.data, null, 2)
-            : err.message || 'Request failed'
-      );
+      setError(formatError(err));
     } finally {
       setLoading(false);
     }
@@ -205,19 +253,41 @@ export default function App() {
 
   const showGenBtn = activePage === 'dashboard' || activePage === 'routeselect' || activePage === 'history' || activePage === 'logs';
   const action = showGenBtn
-    ? <Btn icon={<Plus />} onClick={() => setActivePage('newtrip')}>Generate Plan</Btn>
+    ? <Btn icon={<Plus />} onClick={openNewTrip}>Generate Plan</Btn>
     : null;
 
   let body;
   if (activePage === 'newtrip') {
     body = (
-      <div style={{ maxWidth: 1080, margin: '0 auto', width: '100%' }}>
+      <div style={{ maxWidth: 1080, margin: '0 auto', width: '100%', position: 'relative' }}>
         {error && (
           <div style={{ marginBottom: 20, background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 'var(--radius)', padding: '14px 20px', fontSize: 13, color: '#dc2626' }}>
             {error}
           </div>
         )}
-        <TripForm onSubmit={handleGenerate} loading={loading} />
+        {/* Frost + block the form until the user confirms replacing the plan. */}
+        <div style={{ filter: confirmNew ? 'blur(3px)' : 'none', pointerEvents: confirmNew ? 'none' : 'auto', userSelect: confirmNew ? 'none' : 'auto', transition: 'filter .25s ease' }}>
+          <TripForm onSubmit={handleGenerate} loading={loading} />
+        </div>
+
+        {confirmNew && (
+          <div className="confirm-new-overlay" onClick={() => navigate('dashboard')}>
+            <div className="confirm-new-card" onClick={(e) => e.stopPropagation()}>
+              <div className="confirm-new-icon">
+                <AlertTriangle size={24} strokeWidth={2} />
+              </div>
+              <h3 className="confirm-new-title">Replace current trip?</h3>
+              <p className="confirm-new-text">
+                You already have a generated plan and ELD log sheets. Starting a new
+                trip will permanently remove the current one.
+              </p>
+              <div className="confirm-new-actions">
+                <Btn variant="ghost" onClick={() => navigate('dashboard')}>Keep current</Btn>
+                <Btn onClick={clearAndStartNew}>Remove current &amp; start new</Btn>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   } else if (activePage === 'routeselect') {
@@ -233,7 +303,7 @@ export default function App() {
             <Plus size={24} color="#1a1a1a" strokeWidth={1.5} />
           </div>
           <p style={{ margin: 0, color: 'var(--muted)', fontSize: 14 }}>No trip planned yet</p>
-          <DottedBtn onClick={() => setActivePage('newtrip')}>Generate Trip Plan</DottedBtn>
+          <DottedBtn onClick={openNewTrip}>Generate Trip Plan</DottedBtn>
         </div>
       );
   } else if (activePage === 'logs') {
@@ -248,7 +318,7 @@ export default function App() {
     ) : (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 400, flexDirection: 'column', gap: 16 }}>
         <p style={{ margin: 0, color: 'var(--muted)', fontSize: 14 }}>No trip planned yet</p>
-        <DottedBtn onClick={() => setActivePage('newtrip')}>Generate Trip Plan</DottedBtn>
+        <DottedBtn onClick={openNewTrip}>Generate Trip Plan</DottedBtn>
       </div>
     );
   } else if (activePage === 'history') {
@@ -295,7 +365,7 @@ export default function App() {
     ) : (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 400, flexDirection: 'column', gap: 16 }}>
         <p style={{ margin: 0, color: 'var(--muted)', fontSize: 14 }}>No trips yet</p>
-        <DottedBtn onClick={() => setActivePage('newtrip')}>Generate Trip Plan</DottedBtn>
+        <DottedBtn onClick={openNewTrip}>Generate Trip Plan</DottedBtn>
       </div>
     );
   } else if (activePage === 'settings') {
@@ -309,7 +379,7 @@ export default function App() {
           <Plus size={24} color="#1a1a1a" strokeWidth={1.5} />
         </div>
         <p style={{ margin: 0, color: 'var(--muted)', fontSize: 14 }}>No trip planned yet</p>
-        <DottedBtn onClick={() => setActivePage('newtrip')}>Generate Trip Plan</DottedBtn>
+        <DottedBtn onClick={openNewTrip}>Generate Trip Plan</DottedBtn>
       </div>
     );
   }
@@ -366,7 +436,7 @@ export default function App() {
         </>
       ) : (
         <Sidebar
-          activePage={activePage} onNavigate={setActivePage}
+          activePage={activePage} onNavigate={navigate}
           driver={driverName} collapsed={collapsed} setCollapsed={setCollapsed}
         />
       )}

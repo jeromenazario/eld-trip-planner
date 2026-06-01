@@ -1,70 +1,62 @@
 import React, { useState } from 'react';
 import { Card, Btn, Field, Input } from '../components/ui';
-import { Building2, Hash, Truck } from 'lucide-react';
+import { Building2, Hash, Truck, Lock } from 'lucide-react';
 import useIsMobile from '../hooks/useIsMobile';
 
-function SectionHeader({ title, sub }) {
+function SectionHeader({ title, sub, badge }) {
   return (
     <div style={{ marginBottom: 20 }}>
-      <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, letterSpacing: '-.01em' }}>{title}</h2>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, letterSpacing: '-.01em' }}>{title}</h2>
+        {badge && (
+          <span style={{
+            fontSize: 10.5, fontWeight: 600, letterSpacing: '.04em', textTransform: 'uppercase',
+            color: 'var(--muted)', background: 'var(--border)', borderRadius: 20, padding: '2px 8px',
+          }}>{badge}</span>
+        )}
+      </div>
       {sub && <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--muted)' }}>{sub}</p>}
     </div>
   );
 }
 
-function Select({ value, onChange, options }) {
-  const [f, setF] = useState(false);
+// Honest framing: the HOS ruleset is not user-configurable. The engine always
+// applies the standard property-carrying limits (per the assessment), so this
+// is shown as a locked, read-only reference rather than editable controls.
+function LockNote({ children }) {
   return (
-    <select
-      value={value}
-      onChange={e => onChange(e.target.value)}
-      onFocus={() => setF(true)}
-      onBlur={() => setF(false)}
-      style={{
-        width: '100%', height: 42, padding: '0 14px',
-        border: `1px solid ${f ? 'var(--accent)' : 'var(--border)'}`, borderRadius: 10,
-        fontSize: 14, color: 'var(--text)', background: '#fff',
-        outline: 'none', cursor: 'pointer',
-        boxShadow: f ? '0 0 0 3px var(--accent-tint)' : 'none',
-        transition: 'all .15s ease', appearance: 'none',
-        backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,
-        backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center',
-        paddingRight: 36,
-      }}
-    >
-      {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-    </select>
+    <div style={{
+      display: 'flex', gap: 9, alignItems: 'flex-start',
+      background: 'var(--accent-tint)', border: '1px solid var(--accent-soft)',
+      borderRadius: 8, padding: '10px 12px', marginBottom: 16,
+    }}>
+      <Lock size={14} strokeWidth={2} style={{ color: 'var(--accent)', flexShrink: 0, marginTop: 1 }} />
+      <span style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>{children}</span>
+    </div>
   );
 }
 
-function Toggle({ checked, onChange, label, sub }) {
+// One read-only rule: a label + description on the left, a fixed value pill on
+// the right. `status="off"` greys the pill for an assumption that's NOT applied.
+function LockedRow({ label, desc, value, status = 'on' }) {
+  const tone = status === 'off'
+    ? { color: 'var(--muted)', bg: 'var(--border)' }
+    : { color: 'var(--accent)', bg: 'var(--accent-soft)' };
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 0', borderBottom: '1px solid var(--border)' }}>
-      <div>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, padding: '13px 0', borderBottom: '1px solid var(--border)' }}>
+      <div style={{ minWidth: 0 }}>
         <div style={{ fontSize: 14, fontWeight: 500 }}>{label}</div>
-        {sub && <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 2 }}>{sub}</div>}
+        {desc && <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 2 }}>{desc}</div>}
       </div>
-      <button
-        onClick={() => onChange(!checked)}
-        style={{
-          width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer',
-          background: checked ? 'var(--accent)' : 'var(--border-strong)',
-          position: 'relative', transition: 'background .2s ease', flexShrink: 0,
-        }}
-      >
-        <span style={{
-          position: 'absolute', top: 3, left: checked ? 23 : 3,
-          width: 18, height: 18, borderRadius: '50%', background: '#fff',
-          transition: 'left .2s ease', boxShadow: '0 1px 3px rgba(0,0,0,.2)',
-        }} />
-      </button>
+      <span style={{ fontSize: 12, fontWeight: 600, color: tone.color, background: tone.bg, borderRadius: 20, padding: '4px 11px', whiteSpace: 'nowrap', flexShrink: 0 }}>
+        {value}
+      </span>
     </div>
   );
 }
 
 export default function Settings() {
   const [carrier, setCarrier] = useState({ name: '', dot: '', mc: '', address: '' });
-  const [hos, setHos] = useState({ cycle: '70/8', shortHaul: false, adverseConditions: false, restart34h: true });
   const [vehicle, setVehicle] = useState({ truckNum: '', trailerNum: '', vin: '' });
   const [saved, setSaved] = useState(false);
   const isMobile = useIsMobile();
@@ -73,7 +65,6 @@ export default function Settings() {
 
   const setC = key => e => { setCarrier(f => ({ ...f, [key]: e.target.value })); setSaved(false); };
   const setV = key => e => { setVehicle(f => ({ ...f, [key]: e.target.value })); setSaved(false); };
-  const setHosField = (key, val) => { setHos(f => ({ ...f, [key]: val })); setSaved(false); };
 
   return (
     <div style={{ maxWidth: 680, display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -101,38 +92,22 @@ export default function Settings() {
         </div>
       </Card>
 
-      {/* HOS ruleset */}
+      {/* HOS ruleset — locked, read-only. Reflects the fixed FMCSA limits the
+          engine enforces on every trip (not user-configurable). */}
       <Card>
-        <SectionHeader title="Hours of service ruleset" sub="Controls how drive time and duty cycles are calculated" />
-        <Field label="Driving cycle">
-          <Select
-            value={hos.cycle}
-            onChange={val => setHosField('cycle', val)}
-            options={[
-              { value: '70/8', label: '70 hours / 8 days (property-carrying)' },
-              { value: '60/7', label: '60 hours / 7 days (property-carrying)' },
-            ]}
-          />
-        </Field>
-        <div style={{ marginTop: 6 }}>
-          <Toggle
-            checked={hos.restart34h}
-            onChange={v => setHosField('restart34h', v)}
-            label="34-hour restart"
-            sub="Reset weekly cycle after 34 consecutive off-duty hours"
-          />
-          <Toggle
-            checked={hos.shortHaul}
-            onChange={v => setHosField('shortHaul', v)}
-            label="Short-haul exemption"
-            sub="100 air-mile radius, returns to same work reporting location"
-          />
-          <Toggle
-            checked={hos.adverseConditions}
-            onChange={v => setHosField('adverseConditions', v)}
-            label="Adverse driving conditions"
-            sub="Allows up to 2 extra hours of drive time when conditions warrant"
-          />
+        <SectionHeader title="Hours of service ruleset" sub="The fixed FMCSA limits the engine enforces on every trip" badge="Locked" />
+        <LockNote>
+          Fixed for a{' '}
+          <strong style={{ color: 'var(--text)', fontWeight: 600 }}>property-carrying driver under the 70-hour / 8-day cycle</strong>{' '}
+          with no adverse conditions, per the assessment. These apply to every plan and aren't configurable.
+        </LockNote>
+        <div>
+          <LockedRow label="Driving cycle" desc="Property-carrying driver, 70 hours over 8 days" value="70h / 8 days" />
+          <LockedRow label="Max driving per shift" desc="Hard cap before a 10-hour reset is required" value="11 hours" />
+          <LockedRow label="On-duty window" desc="No driving past 14 hours after coming on duty" value="14 hours" />
+          <LockedRow label="Rest break" desc="Required after 8 cumulative hours of driving" value="30 minutes" />
+          <LockedRow label="Required reset" desc="Off-duty / sleeper berth to start a new shift" value="10 hours" />
+          <LockedRow label="Adverse driving conditions" desc="Assessment assumes none — no extra drive time" value="Off" status="off" />
         </div>
       </Card>
 

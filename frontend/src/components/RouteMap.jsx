@@ -93,8 +93,32 @@ function MarkerDetails({ m, place }) {
   const showPlace = place && place.trim().toLowerCase() !== (title || '').trim().toLowerCase();
   const whenLabel = m.kind === 'start' ? 'Departs' : 'When';
 
+  // A small Street View photo of the actual spot fills the empty band at the top
+  // of the popup. If Google has no imagery there, onError hides the <img> so the
+  // popup falls back cleanly to the text-only layout. Hidden until it loads so a
+  // broken/grey tile never flashes.
+  const [imgOk, setImgOk] = useState(false);
+  const lat = m.pos?.[0], lng = m.pos?.[1];
+  const streetUrl = API_KEY && lat != null && lng != null
+    ? `https://maps.googleapis.com/maps/api/streetview?size=280x110&location=${lat},${lng}&fov=80&pitch=0&source=outdoor&key=${API_KEY}`
+    : null;
+
   return (
     <div style={{ minWidth: 170, maxWidth: 250, padding: '1px 2px 3px' }}>
+      {streetUrl && (
+        <img
+          src={streetUrl}
+          alt=""
+          onLoad={() => setImgOk(true)}
+          onError={() => setImgOk(false)}
+          style={{
+            display: imgOk ? 'block' : 'none',
+            width: '100%', height: 92, objectFit: 'cover',
+            borderRadius: 10, marginBottom: 9,
+            border: '1px solid rgba(0,0,0,0.06)',
+          }}
+        />
+      )}
       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
         <span style={{ width: 9, height: 9, borderRadius: '50%', background: color, flexShrink: 0 }} />
         <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase', color }}>
@@ -126,6 +150,12 @@ function Mini({ label, val, dot }) {
 }
 
 function RemarksStrip({ schedule }) {
+  // Collapsed by default on phones (this list gets long); always open on wider
+  // screens where the grid lays it out compactly across columns.
+  const isMobile = typeof window !== 'undefined'
+    && window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
+  const [open, setOpen] = useState(!isMobile);
+
   if (!schedule?.length) return null;
 
   // Flatten every day's items into one inline flow.
@@ -134,34 +164,57 @@ function RemarksStrip({ schedule }) {
 
   return (
     <div style={{ padding: '6px 22px 4px', borderTop: '1px solid var(--border)' }}>
-      <div style={{
-        fontSize: 10.5, fontWeight: 700, color: '#374151',
-        letterSpacing: '.06em', textTransform: 'uppercase', margin: '14px 0 11px',
-      }}>
-        Remarks
-      </div>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="remarks-strip-toggle"
+        aria-expanded={open}
+        style={{
+          all: 'unset', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          width: '100%', cursor: 'pointer', margin: '14px 0 11px', boxSizing: 'border-box',
+        }}
+      >
+        <span style={{
+          fontSize: 10.5, fontWeight: 700, color: '#374151',
+          letterSpacing: '.06em', textTransform: 'uppercase',
+        }}>
+          Remarks
+          <span className="remarks-strip-count" style={{ marginLeft: 8, color: 'var(--label)', fontWeight: 600 }}>
+            {items.length}
+          </span>
+        </span>
+        <svg
+          className="remarks-strip-chev"
+          width="15" height="15" viewBox="0 0 24 24" fill="none"
+          stroke="var(--muted)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"
+          style={{ transition: 'transform .2s ease', transform: open ? 'rotate(180deg)' : 'none' }}
+        >
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </button>
 
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(min(430px, 100%), 1fr))',
-        columnGap: 36, rowGap: 12,
-      }}>
-        {items.map((it, i) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: 10, minWidth: 0 }}>
-            <span style={{
-              fontFamily: 'var(--mono)', fontSize: 12.5, fontWeight: 600,
-              color: 'var(--accent)', whiteSpace: 'nowrap',
-              minWidth: 64, textAlign: 'right', flexShrink: 0,
-            }}>
-              {it.time}
-            </span>
-            <span style={{ fontSize: 13.5, fontWeight: 500, color: 'var(--text)', minWidth: 0 }}>
-              {it.text}
-              {it.loc && <span style={{ color: 'var(--muted)', fontWeight: 400 }}> · {it.loc}</span>}
-            </span>
-          </div>
-        ))}
-      </div>
+      {open && (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(min(430px, 100%), 1fr))',
+          columnGap: 36, rowGap: 12, paddingBottom: 4,
+        }}>
+          {items.map((it, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: 10, minWidth: 0 }}>
+              <span style={{
+                fontFamily: 'var(--mono)', fontSize: 12.5, fontWeight: 600,
+                color: 'var(--accent)', whiteSpace: 'nowrap',
+                minWidth: 64, textAlign: 'right', flexShrink: 0,
+              }}>
+                {it.time}
+              </span>
+              <span style={{ fontSize: 13.5, fontWeight: 500, color: 'var(--text)', minWidth: 0 }}>
+                {it.text}
+                {it.loc && <span style={{ color: 'var(--muted)', fontWeight: 400 }}> · {it.loc}</span>}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -318,14 +371,26 @@ function MapInner({ route, stops, remarkMarkers = [] }) {
     setActive(null);
   }, [path]);
 
-  // Open a pin's popup and center the clicked pin dead-center in the viewport —
-  // both horizontally and vertically. The map is a fixed 380px tall, so a
-  // centered pin always leaves enough headroom for the popup (which opens
-  // upward) to show in full. InfoWindow auto-pan stays disabled (below) so it
-  // can't drag the pin back off-center to fit the bubble.
+  // Open a pin's popup and center the POPUP (not the pin) in the viewport. The
+  // InfoWindow opens UPWARD from the pin, so to put the bubble in the middle we
+  // pan to a point BELOW the pin by ~half the popup's height. We do that in pixel
+  // space (project the pin → shift down → unproject) so it's exact at any zoom.
+  // InfoWindow auto-pan stays disabled (below) so it can't fight this.
+  const POPUP_HALF_PX = 150; // ≈ half the popup's on-screen height incl. image
   const openMarker = useCallback((m) => {
     setActive(m);
-    if (mapRef.current) mapRef.current.panTo({ lat: m.pos[0], lng: m.pos[1] });
+    const map = mapRef.current;
+    if (!map) return;
+    const latLng = new window.google.maps.LatLng(m.pos[0], m.pos[1]);
+    const proj = map.getProjection();
+    if (!proj) { map.panTo(latLng); return; }
+    const scale = 2 ** map.getZoom();
+    const pt = proj.fromLatLngToPoint(latLng);
+    // Pan the map CENTER to a point north of the pin. +y in world-point space is
+    // south, so subtracting moves the center north → the pin ends up BELOW center
+    // on screen, leaving the upward-opening popup centered in the viewport.
+    const shifted = new window.google.maps.Point(pt.x, pt.y - POPUP_HALF_PX / scale);
+    map.panTo(proj.fromPointToLatLng(shifted));
   }, []);
 
   return (
