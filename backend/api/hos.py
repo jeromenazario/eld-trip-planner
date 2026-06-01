@@ -329,13 +329,24 @@ def _to_calendar_days(shift_days, start_hour, driver_name, co_driver, carrier, t
 
     result = [cal[k] for k in sorted(cal.keys())]
 
-    # Pad every day to midnight with Off Duty so the line always returns to row 1
+    # Make every day span exactly midnight-to-midnight.
     for d in result:
         if d["entries"]:
             last = d["entries"][-1]
             end_min = last["start_min"] + last["hours"] * 60
             remaining = 1440.0 - end_min
-            if remaining > 1e-3:
+            # A sub-minute gap is just floating-point drift from rounding each
+            # entry's `hours` — the activity actually runs to midnight (and
+            # continues on the next calendar day). Snap the final entry exactly
+            # to 1440 so the duty line reaches the day boundary and lines up
+            # with the next day's first entry. Appending an Off-Duty sliver
+            # here instead would draw a vertical "jump" at midnight and emit a
+            # phantom status-change remark for a transition that never happened.
+            if abs(remaining) < 1.0:
+                last["hours"] = round((1440.0 - last["start_min"]) / 60, 4)
+            elif remaining >= 1.0:
+                # Genuine idle time before midnight — pad with real Off Duty
+                # so the line returns to row 1.
                 d["entries"].append({
                     "status":    "OFF",
                     "label":     "Off Duty",

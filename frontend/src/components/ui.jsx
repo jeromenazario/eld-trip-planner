@@ -13,9 +13,9 @@ export function DashedLine({ vertical = false, color = '#d6d6d3', dash = 7, gap 
   );
 }
 
-export function Card({ children, style, pad = true, onClick }) {
+export function Card({ children, style, pad = true, onClick, className }) {
   return (
-    <div onClick={onClick} style={{
+    <div onClick={onClick} className={className} style={{
       background: 'var(--card)', border: '1px solid var(--border)',
       borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)',
       ...(pad ? { padding: 22 } : {}), ...style,

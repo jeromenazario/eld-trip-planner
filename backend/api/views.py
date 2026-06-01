@@ -53,6 +53,15 @@ def haversine_miles(lat1, lng1, lat2, lng2):
     return 2 * R * math.asin(math.sqrt(a))
 
 
+def route_length_miles(coords):
+    """Total great-circle length of a (lat, lng) polyline, in miles."""
+    total = 0.0
+    for i in range(1, len(coords)):
+        total += haversine_miles(coords[i - 1][0], coords[i - 1][1],
+                                 coords[i][0], coords[i][1])
+    return total
+
+
 def interpolate_along_route(coords, target_mile):
     """
     Given a list of (lat, lng) coords forming a polyline,
@@ -217,10 +226,29 @@ class PlanTripView(APIView):
         pickup  = geocode(data["pickup_location"],  api_key)
         dropoff = geocode(data["dropoff_location"], api_key)
 
-        # 2. Get route + raw polyline coords
-        waypoints          = [p for p in [current, pickup, dropoff] if p]
-        route, route_coords = get_route_with_coords(waypoints, api_key) \
-            if len(waypoints) >= 2 else (None, [])
+        # 2. Resolve the route geometry.
+        #    If the client passed the geometry of the route the driver actually
+        #    selected, use it verbatim so the drawn line, the interpolated stops,
+        #    and the gas-station lookups all reference the SAME path. Otherwise
+        #    compute our own route through the pickup waypoint.
+        client_geom = data.get("route_geometry") or []
+        if len(client_geom) >= 2:
+            route_coords = [(pt[0], pt[1]) for pt in client_geom]
+            route = {
+                "type": "FeatureCollection",
+                "features": [{
+                    "type": "Feature",
+                    "geometry": {
+                        "type":        "LineString",
+                        "coordinates": [[lng, lat] for lat, lng in route_coords],
+                    },
+                    "properties": {},
+                }],
+            }
+        else:
+            waypoints          = [p for p in [current, pickup, dropoff] if p]
+            route, route_coords = get_route_with_coords(waypoints, api_key) \
+                if len(waypoints) >= 2 else (None, [])
 
         # 3. Run HOS calculation
         try:
@@ -253,7 +281,17 @@ class PlanTripView(APIView):
                 })
 
         # 5. Attach real coordinates to every stop
-        total_miles = data["estimated_miles"]
+        total_miles  = data["estimated_miles"]
+        # The stop "mile" values are fractions of the user's estimated distance,
+        # but the actual drawn route may be a slightly different length. Map each
+        # stop to the same fraction of the REAL polyline so it sits on the line.
+        actual_miles = route_length_miles(route_coords) if route_coords else total_miles
+
+        def route_point(mile):
+            frac = (mile / total_miles) if total_miles else 0.0
+            frac = max(0.0, min(1.0, frac))
+            return interpolate_along_route(route_coords, frac * actual_miles)
+
         stops = result["stops"]
         for stop in stops:
             stype = stop["type"]
@@ -271,7 +309,7 @@ class PlanTripView(APIView):
                             name=data["dropoff_location"])
 
             elif stype == "rest" and route_coords:
-                rest_lat, rest_lng = interpolate_along_route(route_coords, stop["mile"])
+                rest_lat, rest_lng = route_point(stop["mile"])
                 place = nearest_truck_stop(rest_lat, rest_lng, api_key) if api_key else None
                 if place:
                     stop.update(
@@ -285,7 +323,7 @@ class PlanTripView(APIView):
 
             elif stype == "fuel" and route_coords:
                 # Interpolate position along actual route polyline
-                fuel_lat, fuel_lng = interpolate_along_route(route_coords, stop["mile"])
+                fuel_lat, fuel_lng = route_point(stop["mile"])
 
                 # Find the nearest real gas station at that point
                 place = nearest_gas_station(fuel_lat, fuel_lng, api_key) if api_key else None

@@ -1,13 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Card } from './ui';
 import { hrsMin, fmtClock } from '../utils/adapter';
-import { Clock, MapPin } from 'lucide-react';
+import { Clock, MapPin, ChevronDown } from 'lucide-react';
 
 const G = {
-  VW: 1100, VH: 243,
+  VW: 1100, VH: 188,
   x0: 128, x1: 1036,
   yTop: 30, rowH: 34,
-  remarksY: 210,
 };
 G.gridW = G.x1 - G.x0;
 
@@ -20,6 +19,7 @@ const ROWS = [
 const ROW_IDX = { off: 0, sleeper: 1, driving: 2, onduty: 3 };
 
 const STATUS_LABEL = { off: 'Off Duty', sleeper: 'Sleeper Berth', driving: 'Driving', onduty: 'On Duty' };
+
 
 function hourLabel(h) {
   if (h === 0 || h === 24) return 'M';
@@ -44,32 +44,38 @@ function buildTransitions(day) {
     const showTime = (x - lastLabelX) >= MIN_X_GAP;
     if (showTime) lastLabelX = x;
 
+    // A remark counts as geocoded only when it carries a real place name that
+    // differs from its own label (breaks/sleep usually don't have one).
+    const hasPlace = (r) => r && r.place && r.place !== r.text;
+
+    // Last known geocoded place strictly before this transition.
+    const priorPlace = () => {
+      for (let k = sorted.length - 1; k >= 0; k--) {
+        if (sorted[k].time < c.start && hasPlace(sorted[k])) return sorted[k].place;
+      }
+      return day.carryPlace || null;
+    };
+
     const direct = sorted.find(r => Math.abs(r.time - c.start) <= 15);
 
     if (direct) {
+      // Named stops show their exact place; breaks/sleep are located at the
+      // last known place (estimated) so e.g. "30-Min Break" reads with a city.
+      const exact = hasPlace(direct);
       return {
         time: c.start, from: prev.status, to: c.status,
-        location: direct.place || direct.text,
+        location: exact ? direct.place : priorPlace(),
         action: direct.text,
-        estimated: false,
+        estimated: !exact,
         x, tier, showTime,
       };
     }
 
-    let prior = null;
-    for (let k = sorted.length - 1; k >= 0; k--) {
-      if (sorted[k].time < c.start) { prior = sorted[k]; break; }
-    }
-
-    // If no remark exists yet in this day, fall back to the last known place
-    // from the previous day (e.g. driver is still near the overnight rest stop).
-    const fallbackPlace = prior
-      ? (prior.place || prior.text)
-      : (day.carryPlace || null);
-
+    // No remark at all — fall back to the last known place (e.g. driver is
+    // still near the overnight rest stop on a new day).
     return {
       time: c.start, from: prev.status, to: c.status,
-      location: fallbackPlace,
+      location: priorPlace(),
       action: null,
       estimated: true,
       x, tier, showTime,
@@ -156,33 +162,193 @@ function LogGrid({ day, transitions }) {
       {day.changes.slice(1).map((c, i) => (
         <circle key={'d' + i} cx={xAt(c.start)} cy={yOf(c.status)} r="2.1" fill="var(--line)" />
       ))}
-
-      {/* ── REMARKS timeline markers ── */}
-      <text x={G.x0 - 6} y={G.remarksY} fontSize="8.5" fontWeight="700" fill="#374151"
-        textAnchor="end" dominantBaseline="middle"
-        style={{ fontFamily: 'var(--mono)', letterSpacing: '.04em' }}>REMARKS</text>
-
-      <line x1={G.x0} x2={G.x1} y1={G.remarksY} y2={G.remarksY} stroke="#374151" strokeWidth={1.2} />
-
-      {transitions.map((t) => {
-        const tickLen  = t.tier === 0 ? 14 : 26;
-        const timeY    = G.remarksY - (t.tier === 0 ? 9 : 21);
-
-        return (
-          <g key={'rm' + t.time}>
-            {t.showTime && (
-              <text x={t.x} y={timeY} fontSize="8" textAnchor="middle"
-                fill="#2d5a3d" fontWeight="700" style={{ fontFamily: 'var(--mono)' }}>
-                {fmtClock(t.time)}
-              </text>
-            )}
-            <line x1={t.x} x2={t.x} y1={G.remarksY} y2={G.remarksY + tickLen}
-              stroke="#2d5a3d" strokeWidth={1.4} strokeDasharray="3 3" />
-            <circle cx={t.x} cy={G.remarksY} r={2.2} fill="#2d5a3d" />
-          </g>
-        );
-      })}
     </svg>
+  );
+}
+
+// FMCSA-style REMARKS timeline with a single, stable axis. The horizontal line —
+// its REMARKS label and the green transition dots — is ALWAYS rendered and never
+// moves. Collapsed, each transition shows a time label above + a short dashed
+// prong below. Expanding fades in the hour ruler ticks + hour numbers, cross-
+// fades the dashed prongs into the converging FMCSA prongs, and reveals the
+// diagonal remark/location labels underneath — so the line stays put and the
+// detail simply grows out of it.
+function RemarksTimeline({ day, transitions, expanded }) {
+  const HEAD = { VW: G.VW, VH: 78, axisY: 50, prongDrop: 8, prongH: 13 };
+  const BODY = { VW: G.VW, VH: 170 };
+
+  // Group transitions into STOPS so one physical stop becomes ONE mark with ONE
+  // label, instead of a prong per duty change. A dropoff is often "drive in →
+  // unload → go off duty" — three changes within an hour at the same place — and
+  // drawing each separately makes the prongs collide into an "M" with the labels
+  // stacked on top of each other. Clustering by place + time proximity fixes it.
+  //
+  // Each stop draws as a V spanning its start→end. A lone non-driving stop (a
+  // standalone break) spans its own duration so it still gets two prongs; a long
+  // rest (overnight sleeper) or a bare driving-resume collapses to one prong.
+  const NON_DRIVING = new Set(['off', 'sleeper', 'onduty']);
+  const CLUSTER_GAP_MIN = 90;   // changes within this gap at one place = one stop
+  const MAX_V_MIN = 210;        // wider spans (overnight rests) → single prong
+
+  const segDurAt = (time) => {
+    const seg = day.changes.find(c => c.start === time);
+    return seg ? seg.dur : 0;
+  };
+
+  // Candidate events: any transition carrying a place or an action note.
+  const candidates = transitions.filter(t => t.location || t.action);
+
+  // Merge consecutive candidates that belong to the same stop (close in time and
+  // — when both are geocoded — at the same place).
+  const clusters = [];
+  for (const t of candidates) {
+    const cur = clusters[clusters.length - 1];
+    const gap = cur ? t.time - cur.lastTime : Infinity;
+    const sameLoc = cur && cur.location && t.location ? cur.location === t.location : true;
+    if (cur && gap <= CLUSTER_GAP_MIN && sameLoc) {
+      cur.members.push(t);
+      cur.lastTime = t.time;
+      if (!cur.location && t.location) { cur.location = t.location; cur.estimated = t.estimated; }
+      if (!cur.action && t.action) cur.action = t.action;
+    } else {
+      clusters.push({
+        members: [t], lastTime: t.time,
+        location: t.location, estimated: t.estimated, action: t.action,
+      });
+    }
+  }
+
+  const marks = clusters.map(cl => {
+    const first = cl.members[0];
+    const last  = cl.members[cl.members.length - 1];
+    const start = first.time;
+    // Multi-change stop spans first→last change; a lone non-driving stop spans
+    // its own duration; a lone driving-resume is a single instant.
+    let end;
+    if (cl.members.length > 1) end = last.time;
+    else if (NON_DRIVING.has(first.to)) end = first.time + segDurAt(first.time);
+    else end = first.time;
+
+    const spanMin = end - start;
+    const single = spanMin < 2 || spanMin > MAX_V_MIN;
+    const xa = xAt(start);
+    const xb = single ? xa : Math.min(G.x1, xAt(end));
+    const action = cl.action || (first.to === 'driving' ? 'Start driving' : null);
+    return {
+      time: start, location: cl.location, estimated: cl.estimated, action,
+      xa, xb, single, xmid: single ? xa : (xa + xb) / 2,
+    };
+  });
+
+  const { axisY } = HEAD;
+  const prongTop = axisY + HEAD.prongDrop;
+  const joinY    = prongTop + HEAD.prongH;
+
+  // Each mark animates in as a left→right wave: its delay is proportional to how
+  // far along the axis it sits, so on expand the ruler "unrolls" across the line.
+  const SWEEP_MS = 320;
+  const delayAt = (x) => `${Math.round(((x - G.x0) / G.gridW) * SWEEP_MS)}ms`;
+
+  // Hour ruler ticks on the axis (expanded only) — grow up out of the line.
+  const ticks = [];
+  for (let q = 0; q <= 96; q++) {
+    const x = xAt(q * 15);
+    const isHour = q % 4 === 0;
+    ticks.push(
+      <line key={'t' + q} className="rx-tick" style={{ '--d': delayAt(x) }}
+        x1={x} x2={x} y1={axisY - (isHour ? 9 : 5)} y2={axisY}
+        stroke="#374151" strokeWidth={isHour ? 1 : 0.6} />
+    );
+  }
+
+  return (
+    <div className={`remarks-tl${expanded ? ' open' : ''}`}>
+      {/* HEAD — fixed height; the axis here never moves */}
+      <svg viewBox={`0 0 ${HEAD.VW} ${HEAD.VH}`} width="100%" style={{ display: 'block' }}>
+        {/* Expanded-only: hour ruler ticks (sweep in) + numbers (slide down) */}
+        {ticks}
+        {Array.from({ length: 25 }).map((_, h) => (
+          <text key={'hl' + h} className="rx-hour"
+            style={{ '--d': delayAt(xAt(h * 60)), fontFamily: 'var(--mono)' }}
+            x={xAt(h * 60)} y={axisY - 15} fontSize="9" fill="var(--muted)"
+            textAnchor="middle">{hourLabel(h)}</text>
+        ))}
+        <g className="rx-on">
+          <text x={G.x0} y={axisY - 29} fontSize="8" fill="var(--label)" textAnchor="middle">Midnight</text>
+          <text x={xAt(720)} y={axisY - 29} fontSize="8" fill="var(--label)" textAnchor="middle">Noon</text>
+          <text x={G.x1} y={axisY - 29} fontSize="8" fill="var(--label)" textAnchor="middle">Midnight</text>
+        </g>
+
+        {/* Collapsed-only: time labels above the axis */}
+        <g className="rx-off">
+          {transitions.map((t) => t.showTime && (
+            <text key={'tm' + t.time} x={t.x} y={axisY - (t.tier === 0 ? 9 : 21)} fontSize="8"
+              textAnchor="middle" fill="#2d5a3d" fontWeight="700" style={{ fontFamily: 'var(--mono)' }}>
+              {fmtClock(t.time)}
+            </text>
+          ))}
+        </g>
+
+        {/* The constant axis + REMARKS label */}
+        <text x={G.x0 - 6} y={axisY} fontSize="8.5" fontWeight="700" fill="#374151"
+          textAnchor="end" dominantBaseline="middle"
+          style={{ fontFamily: 'var(--mono)', letterSpacing: '.04em' }}>REMARKS</text>
+        <line x1={G.x0} x2={G.x1} y1={axisY} y2={axisY} stroke="#374151" strokeWidth={1.2} />
+
+        {/* Collapsed-only: short dashed prongs below the axis */}
+        <g className="rx-off">
+          {transitions.map((t) => (
+            <line key={'dp' + t.time} x1={t.x} x2={t.x} y1={axisY} y2={axisY + (t.tier === 0 ? 14 : 26)}
+              stroke="#2d5a3d" strokeWidth={1.4} strokeDasharray="3 3" />
+          ))}
+        </g>
+
+        {/* Expanded-only: converging FMCSA prongs — drop into the wave */}
+        {marks.map((b, i) => (
+          <g key={'b' + i} className="rx-prong" style={{ '--d': delayAt(b.xa) }}>
+            {b.single ? (
+              <line x1={b.xa} x2={b.xa} y1={prongTop} y2={joinY}
+                stroke="var(--line)" strokeWidth="1.5" strokeLinecap="round" />
+            ) : (
+              <path
+                d={`M${b.xa.toFixed(1)},${prongTop} L${b.xmid.toFixed(1)},${joinY} L${b.xb.toFixed(1)},${prongTop}`}
+                fill="none" stroke="var(--line)" strokeWidth="1.5"
+                strokeLinejoin="round" strokeLinecap="round" />
+            )}
+            <circle cx={b.xa} cy={prongTop} r={1.5} fill="var(--line)" />
+            {!b.single && <circle cx={b.xb} cy={prongTop} r={1.5} fill="var(--line)" />}
+          </g>
+        ))}
+
+        {/* Constant green transition dots — anchored on the axis */}
+        {transitions.map((t) => (
+          <circle key={'dot' + t.time} cx={t.x} cy={axisY} r={2.2} fill="#2d5a3d" />
+        ))}
+      </svg>
+
+      {/* BODY — diagonal remark/location labels, revealed on expand */}
+      <div className="remarks-tl-body">
+        <div className="remarks-tl-body-inner">
+          <svg viewBox={`0 0 ${BODY.VW} ${BODY.VH}`} width="100%" style={{ display: 'block' }}>
+            {marks.map((b, i) => {
+              const locLabel = b.location ? (b.estimated ? `~ ${b.location}` : b.location) : null;
+              const remarkLabel = b.action || null;
+              return (
+                <g key={'lb' + i} transform={`translate(${b.xmid.toFixed(1)} 6) rotate(60)`}>
+                  {remarkLabel && (
+                    <text x={5} y={0} fontSize="10.5" fontWeight="600" fill="#1f2937">{remarkLabel}</text>
+                  )}
+                  {locLabel && (
+                    <text x={5} y={remarkLabel ? 12 : 0} fontSize="9.5" fontWeight="600"
+                      fill={b.estimated ? 'var(--label)' : 'var(--accent)'}>{locLabel}</text>
+                  )}
+                </g>
+              );
+            })}
+          </svg>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -256,6 +422,7 @@ function RemarksList({ transitions }) {
 
 function LogCard({ day }) {
   const transitions = buildTransitions(day);
+  const [showTimeline, setShowTimeline] = useState(false);
 
   const head = [
     ['Driver',    day.driver || '—'],
@@ -310,12 +477,42 @@ function LogCard({ day }) {
         </div>
       </div>
 
-      {/* SVG grid + REMARKS markers */}
+      {/* Overview: duty grid */}
       <div style={{ padding: '20px 18px 4px', overflowX: 'auto' }}>
         <LogGrid day={day} transitions={transitions} />
       </div>
 
-      {/* Readable remarks cards */}
+      {/* REMARKS strip: one timeline whose axis stays fixed — expanding grows the
+          hour ruler, prongs and diagonal labels out of the same line. */}
+      {transitions.length > 0 && (
+        <>
+          <div style={{ padding: '4px 18px 0', overflowX: 'auto' }}>
+            <RemarksTimeline day={day} transitions={transitions} expanded={showTimeline} />
+          </div>
+
+          {/* Toggle drives the strip above */}
+          <div style={{ borderTop: '1px solid var(--border)' }}>
+            <button
+              onClick={() => setShowTimeline(o => !o)}
+              className="no-print"
+              aria-expanded={showTimeline}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                padding: '12px 22px', background: 'transparent', border: 'none', cursor: 'pointer',
+                fontSize: 12.5, fontWeight: 600, color: 'var(--accent)', letterSpacing: '.01em',
+              }}
+            >
+              {showTimeline ? 'Hide remarks timeline' : 'View remarks timeline'}
+              <ChevronDown
+                size={15} strokeWidth={2.4}
+                style={{ transition: 'transform .2s ease', transform: showTimeline ? 'rotate(180deg)' : 'none' }}
+              />
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Readable remarks cards — always visible */}
       <RemarksList transitions={transitions} />
     </Card>
   );

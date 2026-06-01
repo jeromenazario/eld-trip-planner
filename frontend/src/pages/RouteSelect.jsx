@@ -308,10 +308,16 @@ function RouteSelectInner({ trip, onConfirm }) {
   useEffect(() => {
     if (!window.google?.maps) return;
     const svc = new window.google.maps.DirectionsService();
-    // Waypoints block alternative routes in the Google API — query origin→dest only
+    // Every route MUST pass through the pickup — route the driver via
+    // current → pickup → dropoff. (Forcing a waypoint means Google usually
+    // returns a single route rather than alternatives; correctness wins here:
+    // a route that skips the pickup is wrong no matter how many we show.)
     svc.route({
       origin:                  trip.input.curLoc,
       destination:             trip.input.dropLoc,
+      waypoints:               trip.input.pickLoc
+        ? [{ location: trip.input.pickLoc, stopover: true }]
+        : [],
       travelMode:              window.google.maps.TravelMode.DRIVING,
       provideRouteAlternatives: true,
     }, (result, status) => {
@@ -383,7 +389,7 @@ function RouteSelectInner({ trip, onConfirm }) {
             {routes ? `${routes.length} routes found` : 'Finding routes…'}
           </h2>
           <span style={{ fontSize: 12, color: 'var(--muted)' }}>
-            {trip.input.curLoc} → {trip.input.dropLoc}
+            {[trip.input.curLoc, trip.input.pickLoc, trip.input.dropLoc].filter(Boolean).join(' → ')}
           </span>
         </div>
 
@@ -398,7 +404,7 @@ function RouteSelectInner({ trip, onConfirm }) {
 
           {routes?.length === 1 && (
             <p style={{ margin: 0, fontSize: 12, color: 'var(--label)', textAlign: 'center', lineHeight: 1.5 }}>
-              Only one route is available for this trip — Google Maps found no meaningful alternatives for this corridor.
+              This is the recommended route through your pickup — no meaningful alternatives were found for this corridor.
             </p>
           )}
         </div>
