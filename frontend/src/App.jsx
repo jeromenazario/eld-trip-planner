@@ -7,7 +7,7 @@ import ELDLogSheet from './components/ELDLogSheet';
 import Profile from './pages/Profile';
 import Settings from './pages/Settings';
 import { DashedLine, Btn, DottedBtn } from './components/ui';
-import { Bell, Plus, Printer, Download, Menu, AlertTriangle } from 'lucide-react';
+import { Plus, Printer, Download, Menu, AlertTriangle } from 'lucide-react';
 import { planTrip } from './api/tripApi';
 import { adaptBackendResponse } from './utils/adapter';
 import useIsMobile from './hooks/useIsMobile';
@@ -106,11 +106,6 @@ function TopBar({ title, subtitle, action, isMobile, onMenu }) {
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 12, flexShrink: 0 }}>
-          {!isMobile && (
-            <button style={{ width: 40, height: 40, borderRadius: 12, border: '1px solid var(--border)', background: 'var(--card)', display: 'grid', placeItems: 'center', color: 'var(--muted)', cursor: 'pointer' }}>
-              <Bell size={18} strokeWidth={1.7} />
-            </button>
-          )}
           {action}
         </div>
       </div>
