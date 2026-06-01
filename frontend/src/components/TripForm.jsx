@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { MapPin, Package, Flag, Route, Clock, Loader2, Check, AlertCircle } from 'lucide-react';
 import { Autocomplete, useJsApiLoader } from '@react-google-maps/api';
 import { Card, Btn, Field, Input } from './ui';
+import useIsMobile from '../hooks/useIsMobile';
 
 function haversine(lat1, lng1, lat2, lng2) {
   const R = 3958.8;
@@ -68,6 +69,7 @@ export default function TripForm({ onSubmit, loading }) {
   }));
   const [coords, setCoords] = useState({ current: null, pickup: null, dropoff: null });
   const [attempted, setAttempted] = useState(false);
+  const isMobile = useIsMobile();
   const set = k => val => setV(s => ({ ...s, [k]: val }));
   const setE = k => e => setV(s => ({ ...s, [k]: e.target.value }));
   const setCoord = k => c => setCoords(s => ({ ...s, [k]: c }));
@@ -89,9 +91,13 @@ export default function TripForm({ onSubmit, loading }) {
   // are known — the same routing the next screen uses — so the number the driver
   // sees here matches the generated route instead of overshooting it.
   const [roadMiles, setRoadMiles] = useState(null);
+  // Real driving duration (hours) for the route — fed to the HOS engine so the
+  // ELD log's driving time matches the actual route instead of a flat 55 mph.
+  const [roadHours, setRoadHours] = useState(null);
   useEffect(() => {
     if (!isLoaded || !window.google?.maps || !coords.current || !coords.dropoff) {
       setRoadMiles(null);
+      setRoadHours(null);
       return;
     }
     let cancelled = false;
@@ -105,9 +111,12 @@ export default function TripForm({ onSubmit, loading }) {
       if (cancelled) return;
       if (status === 'OK' && result.routes[0]) {
         const meters = result.routes[0].legs.reduce((s, l) => s + l.distance.value, 0);
+        const secs   = result.routes[0].legs.reduce((s, l) => s + (l.duration?.value || 0), 0);
         setRoadMiles(Math.round(meters * 0.000621371));
+        setRoadHours(secs > 0 ? secs / 3600 : null);
       } else {
         setRoadMiles(null); // fall back to the haversine estimate
+        setRoadHours(null);
       }
     });
     return () => { cancelled = true; };
@@ -157,15 +166,16 @@ export default function TripForm({ onSubmit, loading }) {
       carrier:          v.carrier,
       truck_number:     v.truck,
       departure_time:   v.departureTime || new Date().toTimeString().slice(0, 5),
+      drive_hours:      roadHours || 0,
     });
   };
 
   return (
     <form onSubmit={handleSubmit} style={{ maxWidth: 1080, margin: '0 auto', width: '100%' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 22, alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 340px', gap: isMobile ? 16 : 22, alignItems: 'start' }}>
 
         {/* Main inputs */}
-        <Card style={{ padding: 28 }}>
+        <Card style={{ padding: isMobile ? 18 : 28 }}>
           <div style={{ marginBottom: 22 }}>
             <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>Trip details</h2>
             <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--muted)' }}>
@@ -177,7 +187,7 @@ export default function TripForm({ onSubmit, loading }) {
             <Field label="Current location" error={attempted && !v.current}>
               <LocationInput icon={<MapPin />} value={v.current} onChange={set('current')} onCoords={setCoord('current')} placeholder="City, State" error={attempted && !v.current} />
             </Field>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16 }}>
               <Field label="Pickup location" error={attempted && !v.pickup}>
                 <LocationInput icon={<Package />} value={v.pickup} onChange={set('pickup')} onCoords={setCoord('pickup')} placeholder="City, State" error={attempted && !v.pickup} />
               </Field>
@@ -185,7 +195,7 @@ export default function TripForm({ onSubmit, loading }) {
                 <LocationInput icon={<Flag />} value={v.dropoff} onChange={set('dropoff')} onCoords={setCoord('dropoff')} placeholder="City, State" error={attempted && !v.dropoff} />
               </Field>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: 16 }}>
               <Field
                 label="Estimated miles"
                 hint={estimatedMiles
@@ -224,7 +234,7 @@ export default function TripForm({ onSubmit, loading }) {
               <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--label)', letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 14 }}>
                 Driver &amp; vehicle
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 16 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1fr 1fr 1fr 1fr', gap: 16 }}>
                 <Field label="Driver name" error={attempted && !v.driver}>
                   <Input value={v.driver} onChange={setE('driver')} placeholder="Full name" error={attempted && !v.driver} />
                 </Field>
@@ -243,7 +253,7 @@ export default function TripForm({ onSubmit, loading }) {
         </Card>
 
         {/* Side rail */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 18, position: 'sticky', top: 90 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 18, position: isMobile ? 'static' : 'sticky', top: 90 }}>
           <Card style={{ padding: 22 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 14 }}>
               <span style={{ color: 'var(--accent)' }}><Route size={19} strokeWidth={1.8} /></span>

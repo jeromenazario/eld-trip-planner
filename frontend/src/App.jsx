@@ -7,9 +7,10 @@ import ELDLogSheet from './components/ELDLogSheet';
 import Profile from './pages/Profile';
 import Settings from './pages/Settings';
 import { DashedLine, Btn, DottedBtn } from './components/ui';
-import { Bell, Plus, Printer, Download } from 'lucide-react';
+import { Bell, Plus, Printer, Download, Menu } from 'lucide-react';
 import { planTrip } from './api/tripApi';
 import { adaptBackendResponse } from './utils/adapter';
+import useIsMobile from './hooks/useIsMobile';
 
 // ---- Topographic contour background -----------------------------------------
 // A subtle "elevation map" watermark: clusters of nested, organically-warped
@@ -84,22 +85,36 @@ const TITLES = {
   profile:     { t: 'My Profile',    s: 'Driver credentials and personal information' },
 };
 
-function TopBar({ title, subtitle, action }) {
+function TopBar({ title, subtitle, action, isMobile, onMenu }) {
+  const pad = isMobile ? '0 14px' : '0 32px';
   return (
     <header style={{ position: 'sticky', top: 0, zIndex: 4 }}>
-      <div style={{ height: 74, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 32px', background: 'var(--bg)' }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 25, fontWeight: 500, letterSpacing: '-.025em', lineHeight: 1.05 }}>{title}</h1>
-          {subtitle && <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 4 }}>{subtitle}</div>}
+      <div style={{ height: isMobile ? 60 : 74, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: pad, background: 'var(--bg)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+          {isMobile && (
+            <button
+              onClick={onMenu}
+              aria-label="Open menu"
+              style={{ width: 40, height: 40, flexShrink: 0, borderRadius: 12, border: '1px solid var(--border)', background: 'var(--card)', display: 'grid', placeItems: 'center', color: 'var(--text)', cursor: 'pointer' }}
+            >
+              <Menu size={20} strokeWidth={1.9} />
+            </button>
+          )}
+          <div style={{ minWidth: 0 }}>
+            <h1 style={{ margin: 0, fontSize: isMobile ? 18 : 25, fontWeight: 500, letterSpacing: '-.025em', lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</h1>
+            {subtitle && !isMobile && <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 4 }}>{subtitle}</div>}
+          </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button style={{ width: 40, height: 40, borderRadius: 12, border: '1px solid var(--border)', background: 'var(--card)', display: 'grid', placeItems: 'center', color: 'var(--muted)', cursor: 'pointer' }}>
-            <Bell size={18} strokeWidth={1.7} />
-          </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 12, flexShrink: 0 }}>
+          {!isMobile && (
+            <button style={{ width: 40, height: 40, borderRadius: 12, border: '1px solid var(--border)', background: 'var(--card)', display: 'grid', placeItems: 'center', color: 'var(--muted)', cursor: 'pointer' }}>
+              <Bell size={18} strokeWidth={1.7} />
+            </button>
+          )}
           {action}
         </div>
       </div>
-      <div style={{ padding: '0 32px', background: 'var(--bg)' }}>
+      <div style={{ padding: pad, background: 'var(--bg)' }}>
         <DashedLine color="var(--border-strong)" dash={6} gap={6} />
       </div>
     </header>
@@ -109,10 +124,15 @@ function TopBar({ title, subtitle, action }) {
 export default function App() {
   const [activePage, setActivePage] = useState('newtrip'); // start on form
   const [collapsed, setCollapsed] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [trip, setTrip] = useState(null);
   const [lastPayload, setLastPayload] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const isMobile = useIsMobile();
+
+  // On mobile, picking a destination also closes the drawer.
+  const navigate = (key) => { setActivePage(key); setDrawerOpen(false); };
 
   const driverName = trip?.input?.driver || 'John Doe';
 
@@ -154,6 +174,7 @@ export default function App() {
       const payload = {
         ...lastPayload,
         estimated_miles: selectedRoute.miles,
+        drive_hours: selectedRoute.driveHours || 0,
         route_geometry: selectedRoute.path || [],
       };
       const { data } = await planTrip(payload);
@@ -231,12 +252,34 @@ export default function App() {
       </div>
     );
   } else if (activePage === 'history') {
+    const cols = '1fr 160px 100px 80px 140px';
+    const hosBadge = (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'var(--accent-soft)', color: 'var(--accent)', fontSize: 12, fontWeight: 600, padding: '4px 9px', borderRadius: 20 }}>
+        <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor' }} />HOS compliant
+      </span>
+    );
     body = trip ? (
+      isMobile ? (
+        <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)', padding: '16px 18px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 600, marginBottom: 14 }}>
+            {trip.input.curLoc}<span style={{ color: 'var(--label)' }}>→</span>{trip.input.dropLoc}
+          </div>
+          {[['Driver', trip.input.driver || '—'], ['Miles', Number(trip.input.miles).toLocaleString()], ['Days', trip.days.length]].map(([k, val]) => (
+            <div key={k} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderTop: '1px solid var(--border)', fontSize: 13.5 }}>
+              <span style={{ color: 'var(--label)' }}>{k}</span>
+              <span style={{ fontWeight: 500 }}>{val}</span>
+            </div>
+          ))}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0 2px', borderTop: '1px solid var(--border)' }}>
+            <span style={{ color: 'var(--label)', fontSize: 13.5 }}>Status</span>{hosBadge}
+          </div>
+        </div>
+      ) : (
       <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden', boxShadow: 'var(--shadow)' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 160px 100px 80px 140px', gap: 16, padding: '13px 24px', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 600, color: 'var(--label)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: cols, gap: 16, padding: '13px 24px', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 600, color: 'var(--label)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
           <div>Route</div><div>Driver</div><div>Miles</div><div>Days</div><div>Status</div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 160px 100px 80px 140px', gap: 16, padding: '16px 24px', alignItems: 'center' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: cols, gap: 16, padding: '16px 24px', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, fontWeight: 500 }}>
             {trip.input.curLoc}
             <span style={{ color: 'var(--label)', fontSize: 13 }}>→</span>
@@ -245,13 +288,10 @@ export default function App() {
           <div style={{ fontSize: 13, color: 'var(--muted)' }}>{trip.input.driver || '—'}</div>
           <div style={{ fontSize: 13, fontFamily: 'var(--mono)', color: 'var(--muted)' }}>{Number(trip.input.miles).toLocaleString()}</div>
           <div style={{ fontSize: 13, color: 'var(--muted)' }}>{trip.days.length}</div>
-          <div>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'var(--accent-soft)', color: 'var(--accent)', fontSize: 12, fontWeight: 600, padding: '4px 9px', borderRadius: 20 }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor' }} />HOS compliant
-            </span>
-          </div>
+          <div>{hosBadge}</div>
         </div>
       </div>
+      )
     ) : (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 400, flexDirection: 'column', gap: 16 }}>
         <p style={{ margin: 0, color: 'var(--muted)', fontSize: 14 }}>No trips yet</p>
@@ -275,7 +315,13 @@ export default function App() {
   }
 
   return (
-    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--bg)', position: 'relative' }}>
+    <div style={{
+      display: 'flex',
+      height: isMobile ? 'auto' : '100vh',
+      minHeight: isMobile ? '100vh' : undefined,
+      overflow: isMobile ? 'visible' : 'hidden',
+      background: 'var(--bg)', position: 'relative',
+    }}>
 
       {/* Topographic contour background */}
       <svg
@@ -291,13 +337,48 @@ export default function App() {
         </g>
       </svg>
 
-      <Sidebar
-        activePage={activePage} onNavigate={setActivePage}
-        driver={driverName} collapsed={collapsed} setCollapsed={setCollapsed}
-      />
-      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden', height: '100vh', position: 'relative', zIndex: 1 }}>
-        <TopBar title={title} subtitle={meta.s} action={action} />
-        <div style={{ flex: 1, overflow: 'auto', padding: '26px 32px 60px' }}>
+      {isMobile ? (
+        <>
+          {/* Dimmed backdrop behind the drawer */}
+          <div
+            onClick={() => setDrawerOpen(false)}
+            aria-hidden={!drawerOpen}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 40,
+              background: 'rgba(20,22,26,.42)',
+              opacity: drawerOpen ? 1 : 0,
+              pointerEvents: drawerOpen ? 'auto' : 'none',
+              transition: 'opacity .25s ease',
+            }}
+          />
+          {/* Off-canvas drawer */}
+          <div style={{
+            position: 'fixed', top: 0, left: 0, height: '100vh', zIndex: 50,
+            transform: drawerOpen ? 'translateX(0)' : 'translateX(-112%)',
+            transition: 'transform .26s cubic-bezier(.4,0,.2,1)',
+          }}>
+            <Sidebar
+              activePage={activePage} onNavigate={navigate}
+              driver={driverName} collapsed={false} setCollapsed={setCollapsed}
+              mobile onClose={() => setDrawerOpen(false)}
+            />
+          </div>
+        </>
+      ) : (
+        <Sidebar
+          activePage={activePage} onNavigate={setActivePage}
+          driver={driverName} collapsed={collapsed} setCollapsed={setCollapsed}
+        />
+      )}
+
+      <main style={{
+        flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0,
+        overflow: isMobile ? 'visible' : 'hidden',
+        height: isMobile ? 'auto' : '100vh',
+        position: 'relative', zIndex: 1,
+      }}>
+        <TopBar title={title} subtitle={meta.s} action={action} isMobile={isMobile} onMenu={() => setDrawerOpen(true)} />
+        <div style={{ flex: 1, overflow: isMobile ? 'visible' : 'auto', padding: isMobile ? '18px 14px 48px' : '26px 32px 60px' }}>
           {body}
         </div>
       </main>

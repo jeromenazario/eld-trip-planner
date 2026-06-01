@@ -36,17 +36,18 @@ BREAK_DURATION       = 0.5    # 30-minute break duration
 def calculate_trip(current_location, pickup_location, dropoff_location,
                    estimated_miles, cycle_used,
                    driver_name="", co_driver="", carrier="", truck_number="",
-                   start_hour=0.0):
+                   start_hour=0.0, drive_hours=0.0):
     """
     Main entry point.
     Returns { logs, stops, summary }.
     """
     total_miles       = estimated_miles
     fuel_stops_needed = int(total_miles // FUEL_STOP_INTERVAL)
+    avg_speed         = _resolve_avg_speed(total_miles, drive_hours)
 
-    tasks      = _build_task_list(total_miles, fuel_stops_needed)
-    shift_days = _simulate_hos(tasks, cycle_used, driver_name, co_driver, carrier, truck_number)
-    days       = _to_calendar_days(shift_days, start_hour, driver_name, co_driver, carrier, truck_number)
+    tasks      = _build_task_list(total_miles, fuel_stops_needed, avg_speed)
+    shift_days = _simulate_hos(tasks, cycle_used, driver_name, co_driver, carrier, truck_number, avg_speed)
+    days       = _to_calendar_days(shift_days, start_hour, driver_name, co_driver, carrier, truck_number, avg_speed)
     stops      = _build_stops(total_miles, fuel_stops_needed)
 
     total_driving = sum(
@@ -79,10 +80,31 @@ def calculate_trip(current_location, pickup_location, dropoff_location,
 
 
 # ---------------------------------------------------------------------------
+# Average speed resolver
+# ---------------------------------------------------------------------------
+
+def _resolve_avg_speed(total_miles, drive_hours):
+    """
+    Decide the average driving speed used to convert distance <-> driving hours.
+
+    When the client passes the route's REAL driving duration (from the map
+    provider's Directions result), derive the effective speed from it so the ELD
+    log's driving hours match the actual route instead of a flat assumption.
+    Fall back to AVG_SPEED_MPH when no duration is given, and ignore implausible
+    values (garbled input) by requiring a sane long-haul band.
+    """
+    if drive_hours and drive_hours > 0 and total_miles > 0:
+        speed = total_miles / drive_hours
+        if 20.0 <= speed <= 80.0:
+            return speed
+    return AVG_SPEED_MPH
+
+
+# ---------------------------------------------------------------------------
 # Task list builder
 # ---------------------------------------------------------------------------
 
-def _build_task_list(total_miles, fuel_stops_needed):
+def _build_task_list(total_miles, fuel_stops_needed, avg_speed=AVG_SPEED_MPH):
     """
     Ordered work tasks for the trip:
       Pickup → [Drive + Fuel Stop] × N → Drive (last) → Dropoff
@@ -91,7 +113,7 @@ def _build_task_list(total_miles, fuel_stops_needed):
 
     segments    = fuel_stops_needed + 1
     seg_miles   = total_miles / segments
-    seg_hours   = seg_miles / AVG_SPEED_MPH
+    seg_hours   = seg_miles / avg_speed
 
     for i in range(segments):
         tasks.append({
@@ -115,7 +137,8 @@ def _build_task_list(total_miles, fuel_stops_needed):
 # HOS simulator
 # ---------------------------------------------------------------------------
 
-def _simulate_hos(tasks, cycle_used_start, driver_name, co_driver, carrier, truck_number):
+def _simulate_hos(tasks, cycle_used_start, driver_name, co_driver, carrier, truck_number,
+                  avg_speed=AVG_SPEED_MPH):
     """
     Walk through tasks enforcing all HOS rules, emitting daily log entries
     with statuses: OFF, SB, D, ON.
@@ -260,7 +283,7 @@ def _simulate_hos(tasks, cycle_used_start, driver_name, co_driver, carrier, truc
     # Compute miles per day from driving entries
     for d in days:
         d["miles"] = round(
-            sum(e["hours"] for e in d["entries"] if e["status"] == "D") * AVG_SPEED_MPH,
+            sum(e["hours"] for e in d["entries"] if e["status"] == "D") * avg_speed,
             1,
         )
 
@@ -271,7 +294,8 @@ def _simulate_hos(tasks, cycle_used_start, driver_name, co_driver, carrier, truc
 # Calendar-day converter
 # ---------------------------------------------------------------------------
 
-def _to_calendar_days(shift_days, start_hour, driver_name, co_driver, carrier, truck_number):
+def _to_calendar_days(shift_days, start_hour, driver_name, co_driver, carrier, truck_number,
+                      avg_speed=AVG_SPEED_MPH):
     """
     Convert shift-based HOS entries into true calendar days (midnight-to-midnight).
     Each entry gets a `start_min` field = absolute minute within its calendar day.
@@ -356,7 +380,7 @@ def _to_calendar_days(shift_days, start_hour, driver_name, co_driver, carrier, t
 
     for d in result:
         d["miles"] = round(
-            sum(e["hours"] for e in d["entries"] if e["status"] == "D") * AVG_SPEED_MPH, 1
+            sum(e["hours"] for e in d["entries"] if e["status"] == "D") * avg_speed, 1
         )
 
     return result

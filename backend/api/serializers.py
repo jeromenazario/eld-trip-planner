@@ -7,6 +7,10 @@ class TripRequestSerializer(serializers.Serializer):
     dropoff_location = serializers.CharField()
     estimated_miles = serializers.FloatField(min_value=1)
     cycle_used = serializers.FloatField(min_value=0, max_value=70)
+    # Real driving duration (hours) for the route, from the map provider's
+    # Directions result. When present, the HOS engine derives driving time from
+    # this instead of a flat average-speed assumption. 0 = not provided.
+    drive_hours = serializers.FloatField(required=False, min_value=0, default=0)
     driver_name = serializers.CharField(required=False, default="", allow_blank=True)
     co_driver = serializers.CharField(required=False, default="", allow_blank=True)
     carrier = serializers.CharField(required=False, default="", allow_blank=True)

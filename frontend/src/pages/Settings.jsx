@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Card, Btn, Field, Input } from '../components/ui';
 import { Building2, Hash, Truck } from 'lucide-react';
+import useIsMobile from '../hooks/useIsMobile';
 
 function SectionHeader({ title, sub }) {
   return (
@@ -66,6 +67,9 @@ export default function Settings() {
   const [hos, setHos] = useState({ cycle: '70/8', shortHaul: false, adverseConditions: false, restart34h: true });
   const [vehicle, setVehicle] = useState({ truckNum: '', trailerNum: '', vin: '' });
   const [saved, setSaved] = useState(false);
+  const isMobile = useIsMobile();
+  const twoCol = isMobile ? '1fr' : '1fr 1fr';
+  const threeCol = isMobile ? '1fr' : '1fr 1fr 1fr';
 
   const setC = key => e => { setCarrier(f => ({ ...f, [key]: e.target.value })); setSaved(false); };
   const setV = key => e => { setVehicle(f => ({ ...f, [key]: e.target.value })); setSaved(false); };
@@ -78,7 +82,7 @@ export default function Settings() {
       <Card>
         <SectionHeader title="Carrier information" sub="Your motor carrier details for log sheet headers" />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: twoCol, gap: 14 }}>
             <Field label="Company name">
               <Input icon={<Building2 />} placeholder="Acme Freight LLC" value={carrier.name} onChange={setC('name')} />
             </Field>
@@ -86,7 +90,7 @@ export default function Settings() {
               <Input placeholder="123 Main St, Dallas TX" value={carrier.address} onChange={setC('address')} />
             </Field>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: twoCol, gap: 14 }}>
             <Field label="USDOT number">
               <Input icon={<Hash />} placeholder="1234567" value={carrier.dot} onChange={setC('dot')} />
             </Field>
@@ -135,7 +139,7 @@ export default function Settings() {
       {/* Vehicle */}
       <Card>
         <SectionHeader title="Vehicle" sub="Truck and trailer identifiers for log sheet records" />
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: threeCol, gap: 14 }}>
           <Field label="Truck number">
             <Input icon={<Truck />} placeholder="T-1042" value={vehicle.truckNum} onChange={setV('truckNum')} />
           </Field>
