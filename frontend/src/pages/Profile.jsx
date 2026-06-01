@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Card, Btn, Field, Input } from '../components/ui';
 import { User, Mail, CreditCard, MapPin, Home } from 'lucide-react';
 import useIsMobile from '../hooks/useIsMobile';
+import { loadProfile, saveProfile } from '../utils/profileStore';
 
 const CDL_CLASSES = ['Class A', 'Class B', 'Class C'];
 const US_STATES = [
@@ -47,11 +48,14 @@ function Select({ value, onChange, options, placeholder }) {
 }
 
 export default function Profile() {
-  const [form, setForm] = useState({
+  // Seed from any previously saved profile so it persists across sessions and
+  // can auto-fill the New Trip form.
+  const [form, setForm] = useState(() => ({
     firstName: '', lastName: '', email: '',
     cdlNumber: '', cdlClass: '', licenseState: '',
     homeTerminal: '',
-  });
+    ...(loadProfile() || {}),
+  }));
   const [saved, setSaved] = useState(false);
   const isMobile = useIsMobile();
 
@@ -61,7 +65,7 @@ export default function Profile() {
   const initials = [form.firstName[0], form.lastName[0]].filter(Boolean).join('').toUpperCase() || 'JD';
   const fullName = [form.firstName, form.lastName].filter(Boolean).join(' ') || 'John Doe';
 
-  const handleSave = () => setSaved(true);
+  const handleSave = () => { saveProfile(form); setSaved(true); };
 
   return (
     <div style={{ maxWidth: 680, display: 'flex', flexDirection: 'column', gap: 20 }}>

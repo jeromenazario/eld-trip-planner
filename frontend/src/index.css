@@ -298,6 +298,31 @@ body { background: var(--bg); margin: 0; color: var(--text); }
   .route-pill { font-size: 13px !important; }
   .route-pill-ic { width: 22px !important; height: 22px !important; }
   .route-arrow { display: none !important; }
+
+  /* Map legend — on phones the 2-column card is too tall and covers the map.
+     Flatten it into one compact horizontal strip pinned across the bottom that
+     scrolls sideways if the items don't all fit. */
+  .map-legend {
+    left: 8px !important;
+    right: 8px !important;
+    bottom: 8px !important;
+    display: flex !important;
+    grid-template-columns: none !important;
+    gap: 14px !important;
+    padding: 7px 10px !important;
+    border-radius: 9px !important;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
+    scrollbar-width: none;
+  }
+  .map-legend::-webkit-scrollbar { display: none; }
+  .map-legend-item {
+    flex-shrink: 0;
+    font-size: 10.5px !important;
+    gap: 5px !important;
+  }
+  .map-legend-item span { width: 9px !important; height: 9px !important; }
 }
 
 /* Per-day REMARKS cards — compress on phones. Each card is a 4-line stack on

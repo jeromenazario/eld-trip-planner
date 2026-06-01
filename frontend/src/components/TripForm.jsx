@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { MapPin, Package, Flag, Route, Clock, Loader2, Check, AlertCircle } from 'lucide-react';
+import { MapPin, Package, Flag, Route, Clock, Loader2, Check, AlertCircle, Sparkles } from 'lucide-react';
 import { Autocomplete, useJsApiLoader } from '@react-google-maps/api';
 import { Card, Btn, Field, Input } from './ui';
 import useIsMobile from '../hooks/useIsMobile';
+import { tripPrefillFromStore } from '../utils/profileStore';
 
 function haversine(lat1, lng1, lat2, lng2) {
   const R = 3958.8;
@@ -75,6 +76,15 @@ export default function TripForm({ onSubmit, loading }) {
   const setCoord = k => c => setCoords(s => ({ ...s, [k]: c }));
 
   const { isLoaded } = useJsApiLoader({ googleMapsApiKey: API_KEY, libraries: LIBRARIES });
+
+  // Auto-fill driver/carrier/truck from the saved Profile + Settings. Read once
+  // at mount so the button only shows when there's actually something to fill.
+  const [prefill] = useState(() => tripPrefillFromStore());
+  const [autoFilled, setAutoFilled] = useState(false);
+  const applyAutoFill = () => {
+    setV(s => ({ ...s, ...prefill.prefill }));
+    setAutoFilled(true);
+  };
 
   // Instant geometric estimate of the WHOLE trip the driver actually drives:
   // current → pickup → dropoff. Skipping the pickup leg badly understates trips
@@ -231,8 +241,28 @@ export default function TripForm({ onSubmit, loading }) {
             </div>
 
             <div style={{ borderTop: '1px solid var(--border)', paddingTop: 18, marginTop: 2 }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--label)', letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 14 }}>
-                Driver &amp; vehicle
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--label)', letterSpacing: '.06em', textTransform: 'uppercase' }}>
+                  Driver &amp; vehicle
+                </div>
+                {prefill.hasAny && (
+                  <button
+                    type="button"
+                    onClick={applyAutoFill}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                      color: autoFilled ? 'var(--muted)' : 'var(--accent)',
+                      background: autoFilled ? '#f3f3f2' : 'var(--accent-soft)',
+                      border: 'none', borderRadius: 20, padding: '5px 11px',
+                      transition: 'all .15s ease',
+                    }}
+                  >
+                    {autoFilled
+                      ? <><Check size={13} strokeWidth={2.6} /> Filled from your profile</>
+                      : <><Sparkles size={13} strokeWidth={2.2} /> Auto-fill from my profile</>}
+                  </button>
+                )}
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : '1fr 1fr 1fr 1fr', gap: 16 }}>
                 <Field label="Driver name" error={attempted && !v.driver}>

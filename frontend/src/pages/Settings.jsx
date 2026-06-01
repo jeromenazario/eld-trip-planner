@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Card, Btn, Field, Input } from '../components/ui';
 import { Building2, Hash, Truck, Lock } from 'lucide-react';
 import useIsMobile from '../hooks/useIsMobile';
+import { loadSettings, saveSettings } from '../utils/profileStore';
 
 function SectionHeader({ title, sub, badge }) {
   return (
@@ -56,8 +57,9 @@ function LockedRow({ label, desc, value, status = 'on' }) {
 }
 
 export default function Settings() {
-  const [carrier, setCarrier] = useState({ name: '', dot: '', mc: '', address: '' });
-  const [vehicle, setVehicle] = useState({ truckNum: '', trailerNum: '', vin: '' });
+  const stored = loadSettings() || {};
+  const [carrier, setCarrier] = useState({ name: '', dot: '', mc: '', address: '', ...(stored.carrier || {}) });
+  const [vehicle, setVehicle] = useState({ truckNum: '', trailerNum: '', vin: '', ...(stored.vehicle || {}) });
   const [saved, setSaved] = useState(false);
   const isMobile = useIsMobile();
   const twoCol = isMobile ? '1fr' : '1fr 1fr';
@@ -65,6 +67,8 @@ export default function Settings() {
 
   const setC = key => e => { setCarrier(f => ({ ...f, [key]: e.target.value })); setSaved(false); };
   const setV = key => e => { setVehicle(f => ({ ...f, [key]: e.target.value })); setSaved(false); };
+
+  const handleSave = () => { saveSettings({ carrier, vehicle }); setSaved(true); };
 
   return (
     <div style={{ maxWidth: 680, display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -129,7 +133,7 @@ export default function Settings() {
 
       {/* Save */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <Btn onClick={() => setSaved(true)}>Save settings</Btn>
+        <Btn onClick={handleSave}>Save settings</Btn>
         {saved && <span style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 500 }}>Saved</span>}
       </div>
     </div>
