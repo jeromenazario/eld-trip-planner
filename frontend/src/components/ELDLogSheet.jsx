@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card } from './ui';
 import { hrsMin, fmtClock } from '../utils/adapter';
-import { Clock, MapPin, ChevronDown } from 'lucide-react';
+import { Clock, MapPin, ChevronDown, Maximize2, X } from 'lucide-react';
 
 const G = {
   VW: 1100, VH: 188,
@@ -455,6 +455,20 @@ function RemarksList({ transitions }) {
 function LogCard({ day }) {
   const transitions = buildTransitions(day);
   const [showTimeline, setShowTimeline] = useState(false);
+  const [zoomed, setZoomed] = useState(false);
+
+  // While the landscape overlay is open, lock body scroll and allow Esc to close.
+  useEffect(() => {
+    if (!zoomed) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKey = (e) => { if (e.key === 'Escape') setZoomed(false); };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [zoomed]);
 
   const head = [
     ['Driver',    day.driver || '—'],
@@ -509,11 +523,22 @@ function LogCard({ day }) {
         </div>
       </div>
 
-      {/* Overview: duty grid — swipes sideways on mobile (.log-scroll) */}
-      <div className="log-scroll" style={{ padding: '20px 18px 4px' }}>
-        <div className="log-scroll-inner">
-          <LogGrid day={day} transitions={transitions} />
+      {/* Overview: duty grid — swipes sideways on mobile (.log-scroll). The
+          zoom FAB (mobile only, see .log-zoom-btn) opens a rotated landscape
+          view so the full 24-hour grid is legible without sideways scrolling. */}
+      <div style={{ position: 'relative' }}>
+        <div className="log-scroll" style={{ padding: '20px 18px 4px' }}>
+          <div className="log-scroll-inner">
+            <LogGrid day={day} transitions={transitions} />
+          </div>
         </div>
+        <button
+          className="log-zoom-btn no-print"
+          onClick={() => setZoomed(true)}
+          aria-label="View log in landscape"
+        >
+          <Maximize2 size={16} strokeWidth={2.2} />
+        </button>
       </div>
 
       {/* REMARKS strip: one timeline whose axis stays fixed — expanding grows the
@@ -550,6 +575,34 @@ function LogCard({ day }) {
 
       {/* Readable remarks cards — always visible */}
       <RemarksList transitions={transitions} />
+
+      {/* Landscape full-screen viewer (mobile). The grid + remarks are rotated
+          90° and sized to the viewport so the whole 24-hour day is legible at
+          once instead of being scrubbed sideways. */}
+      {zoomed && (
+        <div className="log-landscape no-print" onClick={() => setZoomed(false)}>
+          <button
+            className="log-landscape-close"
+            onClick={() => setZoomed(false)}
+            aria-label="Close landscape view"
+          >
+            <X size={20} strokeWidth={2.4} />
+          </button>
+          <div className="log-landscape-stage" onClick={(e) => e.stopPropagation()}>
+            <div className="log-landscape-rot">
+              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10, color: 'var(--text)' }}>
+                Day {day.index} · {day.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+              </div>
+              <LogGrid day={day} transitions={transitions} />
+              {transitions.length > 0 && (
+                <div style={{ marginTop: 6 }}>
+                  <RemarksTimeline day={day} transitions={transitions} expanded />
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </Card>
   );
 }

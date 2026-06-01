@@ -8,8 +8,8 @@ import { MapPin, Package, Flag, ArrowRight, Printer, Download, Grid, Route, Aler
 
 function RoutePill({ color, Icon, text }) {
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 600 }}>
-      <span style={{ width: 26, height: 26, borderRadius: 8, background: color + '1a', color, display: 'grid', placeItems: 'center' }}>
+    <span className="route-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 600 }}>
+      <span className="route-pill-ic" style={{ width: 26, height: 26, borderRadius: 8, background: color + '1a', color, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
         <Icon size={15} strokeWidth={2} />
       </span>
       {text}
@@ -47,12 +47,12 @@ export default function NewTrip({ trip, loading, error }) {
       )}
 
       {/* Route banner */}
-      <Card style={{ padding: '16px 22px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+      <Card className="route-banner" style={{ padding: '16px 22px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+        <div className="route-pills" style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
           <RoutePill color="var(--accent)" Icon={MapPin} text={input.curLoc} />
-          <ArrowRight size={16} color="var(--label)" />
+          <ArrowRight size={16} color="var(--label)" className="route-arrow" />
           <RoutePill color="#2563eb" Icon={Package} text={input.pickLoc} />
-          <ArrowRight size={16} color="var(--label)" />
+          <ArrowRight size={16} color="var(--label)" className="route-arrow" />
           <RoutePill color="#dc2626" Icon={Flag} text={input.dropLoc} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>

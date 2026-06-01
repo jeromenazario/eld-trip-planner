@@ -276,6 +276,30 @@ body { background: var(--bg); margin: 0; color: var(--text); }
   .kpi-card:hover { transform: none; }
 }
 
+/* On phones the KPI cards take too much vertical room. Tighten the grid gap,
+   padding and type so two compact tiles sit per row. Inline styles set these on
+   the elements, so the overrides need !important to win — scoped to the media
+   query so the desktop layout is untouched. */
+@media (max-width: 640px) {
+  .kpi-grid { gap: 10px !important; }
+  .kpi-card { padding: 13px 14px !important; border-radius: 13px !important; }
+  .kpi-label { font-size: 11.5px !important; }
+  .kpi-figure { margin-top: 8px !important; }
+  .kpi-value { font-size: 22px !important; }
+  .kpi-unit { font-size: 11px !important; }
+}
+
+/* Route summary banner — compress on phones. Stack the three stops vertically as
+   a tidy list (arrows hidden), shrink type + icons, and let the HOS/mi row sit
+   below. Desktop keeps the horizontal pill layout untouched. */
+@media (max-width: 640px) {
+  .route-banner { padding: 13px 15px !important; gap: 10px !important; }
+  .route-pills { flex-direction: column; align-items: flex-start !important; gap: 8px !important; }
+  .route-pill { font-size: 13px !important; }
+  .route-pill-ic { width: 22px !important; height: 22px !important; }
+  .route-arrow { display: none !important; }
+}
+
 /* Daily ELD log sheets — gentle float + shadow on hover. These are large
    full-width cards, so the lift is smaller than the KPI tiles (no scale) and
    the shadow spreads wider to read as the whole sheet rising off the page. */
@@ -295,3 +319,91 @@ body { background: var(--bg); margin: 0; color: var(--text); }
   .log-card { transition: box-shadow .2s ease, border-color .2s ease; }
   .log-card:hover { transform: none; }
 }
+
+/* ---- Landscape log viewer (mobile only) ------------------------------------
+   The 24-hour grid is wider than a phone, so it scrolls sideways. This FAB opens
+   a full-screen overlay that rotates the grid 90° to use the phone's long edge —
+   the whole day reads at once. Hidden on tablet/desktop where it already fits. */
+.log-zoom-btn { display: none; }
+
+@media (max-width: 768px) {
+  .log-zoom-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    right: 12px;
+    bottom: 8px;
+    width: 38px;
+    height: 38px;
+    border-radius: 11px;
+    border: 1px solid var(--border-strong);
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    color: var(--accent);
+    box-shadow: 0 4px 12px rgba(20, 22, 26, 0.12);
+    cursor: pointer;
+    z-index: 4;
+  }
+  .log-zoom-btn:active { transform: scale(.94); }
+}
+
+/* The overlay itself is allowed on any width (so Esc/back works), but the FAB
+   that opens it only shows on mobile. */
+.log-landscape {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(20, 22, 26, 0.55);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: logLandscapeIn .22s ease-out;
+}
+@keyframes logLandscapeIn { from { opacity: 0; } to { opacity: 1; } }
+
+.log-landscape-close {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.95);
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  z-index: 1002;
+}
+
+.log-landscape-stage {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* Rotate the content to landscape and size it to the viewport's SHORT edge
+   (now the visual height). The fixed dimensions match the swapped axes:
+   width = viewport height, height = viewport width. */
+.log-landscape-rot {
+  background: #fff;
+  border-radius: 14px;
+  padding: 16px 18px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  transform: rotate(90deg);
+  transform-origin: center center;
+  width: 92vh;
+  max-width: 920px;
+}
+.log-landscape-rot svg { width: 100%; height: auto; }

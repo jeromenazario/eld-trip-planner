@@ -126,6 +126,12 @@ function Mini({ label, val, dot }) {
 }
 
 function RemarksStrip({ schedule }) {
+  // Collapsed by default on phones (this list gets long); always open on wider
+  // screens where the grid lays it out compactly across columns.
+  const isMobile = typeof window !== 'undefined'
+    && window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
+  const [open, setOpen] = useState(!isMobile);
+
   if (!schedule?.length) return null;
 
   // Flatten every day's items into one inline flow.
@@ -134,34 +140,57 @@ function RemarksStrip({ schedule }) {
 
   return (
     <div style={{ padding: '6px 22px 4px', borderTop: '1px solid var(--border)' }}>
-      <div style={{
-        fontSize: 10.5, fontWeight: 700, color: '#374151',
-        letterSpacing: '.06em', textTransform: 'uppercase', margin: '14px 0 11px',
-      }}>
-        Remarks
-      </div>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="remarks-strip-toggle"
+        aria-expanded={open}
+        style={{
+          all: 'unset', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          width: '100%', cursor: 'pointer', margin: '14px 0 11px', boxSizing: 'border-box',
+        }}
+      >
+        <span style={{
+          fontSize: 10.5, fontWeight: 700, color: '#374151',
+          letterSpacing: '.06em', textTransform: 'uppercase',
+        }}>
+          Remarks
+          <span className="remarks-strip-count" style={{ marginLeft: 8, color: 'var(--label)', fontWeight: 600 }}>
+            {items.length}
+          </span>
+        </span>
+        <svg
+          className="remarks-strip-chev"
+          width="15" height="15" viewBox="0 0 24 24" fill="none"
+          stroke="var(--muted)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"
+          style={{ transition: 'transform .2s ease', transform: open ? 'rotate(180deg)' : 'none' }}
+        >
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </button>
 
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(min(430px, 100%), 1fr))',
-        columnGap: 36, rowGap: 12,
-      }}>
-        {items.map((it, i) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: 10, minWidth: 0 }}>
-            <span style={{
-              fontFamily: 'var(--mono)', fontSize: 12.5, fontWeight: 600,
-              color: 'var(--accent)', whiteSpace: 'nowrap',
-              minWidth: 64, textAlign: 'right', flexShrink: 0,
-            }}>
-              {it.time}
-            </span>
-            <span style={{ fontSize: 13.5, fontWeight: 500, color: 'var(--text)', minWidth: 0 }}>
-              {it.text}
-              {it.loc && <span style={{ color: 'var(--muted)', fontWeight: 400 }}> · {it.loc}</span>}
-            </span>
-          </div>
-        ))}
-      </div>
+      {open && (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(min(430px, 100%), 1fr))',
+          columnGap: 36, rowGap: 12, paddingBottom: 4,
+        }}>
+          {items.map((it, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: 10, minWidth: 0 }}>
+              <span style={{
+                fontFamily: 'var(--mono)', fontSize: 12.5, fontWeight: 600,
+                color: 'var(--accent)', whiteSpace: 'nowrap',
+                minWidth: 64, textAlign: 'right', flexShrink: 0,
+              }}>
+                {it.time}
+              </span>
+              <span style={{ fontSize: 13.5, fontWeight: 500, color: 'var(--text)', minWidth: 0 }}>
+                {it.text}
+                {it.loc && <span style={{ color: 'var(--muted)', fontWeight: 400 }}> · {it.loc}</span>}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
