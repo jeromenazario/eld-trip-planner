@@ -177,24 +177,68 @@ function RemarksTimeline({ day, transitions, expanded }) {
   const HEAD = { VW: G.VW, VH: 78, axisY: 50, prongDrop: 8, prongH: 13 };
   const BODY = { VW: G.VW, VH: 170 };
 
-  // Mark each non-driving stop once. A short stop (break, fuel, pickup, dropoff)
-  // shows two prongs spanning its real start→end; a long rest (sleeper, long
-  // off-duty) would span absurdly wide, so it collapses to a single prong.
+  // Group transitions into STOPS so one physical stop becomes ONE mark with ONE
+  // label, instead of a prong per duty change. A dropoff is often "drive in →
+  // unload → go off duty" — three changes within an hour at the same place — and
+  // drawing each separately makes the prongs collide into an "M" with the labels
+  // stacked on top of each other. Clustering by place + time proximity fixes it.
+  //
+  // Each stop draws as a V spanning its start→end. A lone non-driving stop (a
+  // standalone break) spans its own duration so it still gets two prongs; a long
+  // rest (overnight sleeper) or a bare driving-resume collapses to one prong.
   const NON_DRIVING = new Set(['off', 'sleeper', 'onduty']);
-  const LONG_STOP_MIN = 75;
-  const marks = transitions
-    .filter(t => NON_DRIVING.has(t.to) && (t.location || t.action))
-    .map(t => {
-      const idx  = day.changes.findIndex(c => c.start === t.time);
-      const seg  = day.changes[idx];
-      const next = day.changes[idx + 1];
-      const durMin = seg ? seg.dur : 0;
-      const endMin = next ? next.start : (seg ? seg.start + seg.dur : t.time);
-      const single = durMin > LONG_STOP_MIN;
-      const xa = xAt(t.time);
-      const xb = single ? xa : Math.min(G.x1, xAt(Math.max(endMin, t.time + 14)));
-      return { ...t, xa, xb, single, xmid: single ? xa : (xa + xb) / 2 };
-    });
+  const CLUSTER_GAP_MIN = 90;   // changes within this gap at one place = one stop
+  const MAX_V_MIN = 210;        // wider spans (overnight rests) → single prong
+
+  const segDurAt = (time) => {
+    const seg = day.changes.find(c => c.start === time);
+    return seg ? seg.dur : 0;
+  };
+
+  // Candidate events: any transition carrying a place or an action note.
+  const candidates = transitions.filter(t => t.location || t.action);
+
+  // Merge consecutive candidates that belong to the same stop (close in time and
+  // — when both are geocoded — at the same place).
+  const clusters = [];
+  for (const t of candidates) {
+    const cur = clusters[clusters.length - 1];
+    const gap = cur ? t.time - cur.lastTime : Infinity;
+    const sameLoc = cur && cur.location && t.location ? cur.location === t.location : true;
+    if (cur && gap <= CLUSTER_GAP_MIN && sameLoc) {
+      cur.members.push(t);
+      cur.lastTime = t.time;
+      if (!cur.location && t.location) { cur.location = t.location; cur.estimated = t.estimated; }
+      if (!cur.action && t.action) cur.action = t.action;
+    } else {
+      clusters.push({
+        members: [t], lastTime: t.time,
+        location: t.location, estimated: t.estimated, action: t.action,
+      });
+    }
+  }
+
+  const marks = clusters.map(cl => {
+    const first = cl.members[0];
+    const last  = cl.members[cl.members.length - 1];
+    const start = first.time;
+    // Multi-change stop spans first→last change; a lone non-driving stop spans
+    // its own duration; a lone driving-resume is a single instant.
+    let end;
+    if (cl.members.length > 1) end = last.time;
+    else if (NON_DRIVING.has(first.to)) end = first.time + segDurAt(first.time);
+    else end = first.time;
+
+    const spanMin = end - start;
+    const single = spanMin < 2 || spanMin > MAX_V_MIN;
+    const xa = xAt(start);
+    const xb = single ? xa : Math.min(G.x1, xAt(end));
+    const action = cl.action || (first.to === 'driving' ? 'Start driving' : null);
+    return {
+      time: start, location: cl.location, estimated: cl.estimated, action,
+      xa, xb, single, xmid: single ? xa : (xa + xb) / 2,
+    };
+  });
 
   const { axisY } = HEAD;
   const prongTop = axisY + HEAD.prongDrop;
@@ -202,7 +246,7 @@ function RemarksTimeline({ day, transitions, expanded }) {
 
   // Each mark animates in as a left→right wave: its delay is proportional to how
   // far along the axis it sits, so on expand the ruler "unrolls" across the line.
-  const SWEEP_MS = 540;
+  const SWEEP_MS = 320;
   const delayAt = (x) => `${Math.round(((x - G.x0) / G.gridW) * SWEEP_MS)}ms`;
 
   // Hour ruler ticks on the axis (expanded only) — grow up out of the line.

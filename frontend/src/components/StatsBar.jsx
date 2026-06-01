@@ -20,7 +20,7 @@ export default function StatsBar({ stats }) {
           ? stats[key].toFixed(1)
           : stats[key];
         return (
-          <Card key={key} style={{ padding: 18 }}>
+          <Card key={key} className="kpi-card" style={{ padding: 18 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div style={{ fontSize: 12.5, color: 'var(--muted)', fontWeight: 500, maxWidth: '80%' }}>{label}</div>
               <span style={{ color: warn ? 'var(--amber)' : 'var(--accent)', opacity: .85 }}>

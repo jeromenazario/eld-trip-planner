@@ -120,16 +120,22 @@ export default function TripForm({ onSubmit, loading }) {
   const valid = v.current && v.pickup && v.dropoff && estimatedMiles > 0 && v.cycleUsed !== '' && !cycleExhausted && v.driver && v.carrier && v.truck;
   const cyclePct = Math.min(100, (Number(v.cycleUsed) || 0) / 70 * 100);
 
+  // Estimated miles is a generated value (Google driving distance / haversine
+  // fallback), never a field the driver fills. When all three locations are typed
+  // but no distance comes back, it's because a location was typed freehand instead
+  // of picked from the autocomplete and so never geocoded — the banner below
+  // steers the driver to fix the location rather than to "fill in" the miles.
+
   const LocationInput = isLoaded ? PlacesInput : ({ value, onChange, placeholder, icon }) => (
     <Input icon={icon} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} />
   );
 
-  // Count what's still missing so the banner can name them.
+  // Count what's still missing so the banner can name them. Estimated miles is
+  // intentionally excluded — it's generated, not user-entered (see milesUnavailable).
   const missing = [
     !v.current   && 'current location',
     !v.pickup    && 'pickup location',
     !v.dropoff   && 'drop-off location',
-    !(estimatedMiles > 0) && 'estimated miles',
     v.cycleUsed === '' && 'current cycle used',
     !v.driver    && 'driver name',
     !v.carrier   && 'carrier name',
@@ -180,13 +186,16 @@ export default function TripForm({ onSubmit, loading }) {
               </Field>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
-              <Field label="Estimated miles" error={attempted && !estimatedMiles}>
+              <Field
+                label="Estimated miles"
+                hint={estimatedMiles
+                  ? `Auto-calculated · ${roadMiles ? 'driving distance' : 'estimate'}`
+                  : 'Generated automatically from your route'}
+              >
                 <div style={{ height: 42, padding: '0 14px 0 38px', borderRadius: 10, position: 'relative',
-                  border: `1px solid ${attempted && !estimatedMiles ? '#fca5a5' : 'var(--border)'}`,
-                  background: attempted && !estimatedMiles ? '#fff8f8' : '#f9f9f8',
-                  boxShadow: attempted && !estimatedMiles ? '0 0 0 3px #fee2e2' : 'none',
+                  border: '1px solid var(--border)', background: '#f9f9f8',
                   display: 'flex', alignItems: 'center', gap: 10, transition: 'all .15s ease' }}>
-                  <span style={{ position: 'absolute', left: 13, color: attempted && !estimatedMiles ? '#f87171' : 'var(--label)', display: 'flex' }}>
+                  <span style={{ position: 'absolute', left: 13, color: 'var(--label)', display: 'flex' }}>
                     <Route size={17} />
                   </span>
                   <span style={{ fontSize: 14, color: estimatedMiles ? 'var(--text)' : 'var(--label)', fontWeight: estimatedMiles ? 500 : 400 }}>
@@ -276,7 +285,9 @@ export default function TripForm({ onSubmit, loading }) {
               <div style={{ fontSize: 12, color: '#b91c1c', lineHeight: 1.45 }}>
                 {cycleExhausted
                   ? 'Cycle exhausted — a 34-hour restart is required before starting a new trip.'
-                  : <>Please fill in the {missing.length} highlighted field{missing.length !== 1 ? 's' : ''} below before choosing a route.</>}
+                  : missing.length > 0
+                    ? <>Please fill in the {missing.length} highlighted field{missing.length !== 1 ? 's' : ''} below before choosing a route.</>
+                    : <>We couldn't calculate the distance for your route. Pick each location from the dropdown suggestions so the miles can be generated.</>}
               </div>
             </div>
           )}
