@@ -12,6 +12,28 @@ from .serializers import TripRequestSerializer
 from .hos import calculate_trip
 
 
+def _cap_route_geometry(route, max_points=1500):
+    """
+    Cap the response route's coordinate count. A backend-computed route can carry
+    tens of thousands of points (full Google step resolution), bloating the JSON
+    response to ~800 KB. The drawn line doesn't need that density — downsample it
+    so the payload (and the client parse) stays small. Endpoints are preserved.
+    """
+    try:
+        coords = route["features"][0]["geometry"]["coordinates"]
+    except (TypeError, KeyError, IndexError):
+        return route
+    n = len(coords)
+    if n <= max_points:
+        return route
+    step = (n // max_points) + 1
+    sampled = coords[::step]
+    if sampled[-1] != coords[-1]:
+        sampled.append(coords[-1])
+    route["features"][0]["geometry"]["coordinates"] = sampled
+    return route
+
+
 def health(request):
     """
     Lightweight liveness probe for uptime pings / keep-warm crons.
@@ -345,7 +367,7 @@ class PlanTripView(APIView):
 
         return Response({
             "logs":     result["logs"],
-            "route":    route,
+            "route":    _cap_route_geometry(route),
             "stops":    stops,
             "summary":  result["summary"],
             "geocoded": {"current": current, "pickup": pickup, "dropoff": dropoff},
