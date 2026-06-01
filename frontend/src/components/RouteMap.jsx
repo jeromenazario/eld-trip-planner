@@ -439,10 +439,11 @@ function MapInner({ route, stops, remarkMarkers = [] }) {
         )}
       </GoogleMap>
 
-      {/* Legend */}
-      <div style={{ position: 'absolute', left: 14, bottom: 14, zIndex: 5, background: 'rgba(255,255,255,.95)', border: '1px solid var(--border)', borderRadius: 10, padding: '11px 13px', boxShadow: 'var(--shadow-md)', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '7px 16px' }}>
+      {/* Legend — 2-col card on desktop; one compressed scrollable row pinned to
+          the bottom of the map on phones (see .map-legend in index.css). */}
+      <div className="map-legend" style={{ position: 'absolute', left: 14, bottom: 14, zIndex: 5, background: 'rgba(255,255,255,.95)', border: '1px solid var(--border)', borderRadius: 10, padding: '11px 13px', boxShadow: 'var(--shadow-md)', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '7px 16px' }}>
         {Object.entries(MARKER_LABELS).map(([k, label]) => (
-          <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 11.5, color: 'var(--text)', fontWeight: 500 }}>
+          <div key={k} className="map-legend-item" style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 11.5, color: 'var(--text)', fontWeight: 500 }}>
             <span style={{ width: 11, height: 11, borderRadius: '50%', background: MARKER_COLORS[k], flexShrink: 0 }} />
             {label}
           </div>
