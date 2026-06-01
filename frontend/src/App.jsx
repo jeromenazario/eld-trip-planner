@@ -121,6 +121,22 @@ function TopBar({ title, subtitle, action, isMobile, onMenu }) {
   );
 }
 
+// The backend only needs the route geometry to place stops and find nearby gas
+// stations — Google's full step-by-step resolution (tens of thousands of points
+// on a long trip) is overkill and can blow past request-size limits. Downsample
+// to a cap that keeps interpolation accurate (a point every mile or two) while
+// keeping the payload small. The full-resolution path is still used locally to
+// draw the line on the map.
+function downsampleRoute(path, max = 2000) {
+  if (!Array.isArray(path) || path.length <= max) return path || [];
+  const step = Math.ceil(path.length / max);
+  const out = [];
+  for (let i = 0; i < path.length; i += step) out.push(path[i]);
+  const last = path[path.length - 1];
+  if (out.length === 0 || out[out.length - 1] !== last) out.push(last);
+  return out;
+}
+
 export default function App() {
   const [activePage, setActivePage] = useState('newtrip'); // start on form
   const [collapsed, setCollapsed] = useState(false);
@@ -229,7 +245,7 @@ export default function App() {
         ...lastPayload,
         estimated_miles: selectedRoute.miles,
         drive_hours: selectedRoute.driveHours || 0,
-        route_geometry: selectedRoute.path || [],
+        route_geometry: downsampleRoute(selectedRoute.path),
       };
       const { data } = await planTrip(payload);
       const designData = adaptBackendResponse(data, payload);
