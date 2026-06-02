@@ -3,7 +3,11 @@ services:
     name: eld-trip-planner-api
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn backend.wsgi:application --bind 0.0.0.0:$PORT
+    # 2 worker processes, each with a thread pool, so concurrent requests (e.g.
+    # two devices, or the cron ping overlapping a plan request) are handled in
+    # parallel instead of queuing behind a single worker. The work is I/O-bound
+    # (waiting on Google), so threads add concurrency cheaply on the 512 MB tier.
+    startCommand: gunicorn backend.wsgi:application --workers 2 --threads 4 --worker-class gthread --timeout 120 --bind 0.0.0.0:$PORT
     envVars:
       - key: DJANGO_SECRET_KEY
         generateValue: true
